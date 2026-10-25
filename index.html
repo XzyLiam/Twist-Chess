@@ -2,33 +2,463 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>TwistChess</title>
-    <link rel="stylesheet" href="style.css">
-    <!-- Include Chess.js and Chessboard logic libraries if needed, or build custom -->
+    <!-- Include Chess.js for robust move validation and game rules -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+    <style>
+        :root {
+            --bg-color: #121212;
+            --surface-color: #1e1e1e;
+            --primary-color: #779556;
+            --accent-color: #d4af37;
+            --text-color: #ffffff;
+            --text-secondary: #aaaaaa;
+            --light-square: #ebecd0;
+            --dark-square: #779556;
+        }
+
+        [data-theme="wood"] {
+            --light-square: #f0d9b5;
+            --dark-square: #b58863;
+        }
+
+        [data-theme="blue"] {
+            --light-square: #dee3e6;
+            --dark-square: #8ca2ad;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0.5;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            user-select: none;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            overflow: hidden;
+        }
+
+        .app-container {
+            width: 100%;
+            max-width: 450px;
+            height: 100vh;
+            max-height: 900px;
+            display: flex;
+            flex-direction: column;
+            background: var(--surface-color);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* Screens */
+        .screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+            transition: transform 0.3s ease-in-out;
+            background: var(--surface-color);
+            z-index: 1;
+        }
+
+        .screen.hidden {
+            transform: translateX(100%);
+            pointer-events: none;
+        }
+
+        /* Home Screen */
+        .hero {
+            text-align: center;
+            margin: 40px 0 20px 0;
+        }
+
+        .hero h1 {
+            font-size: 32px;
+            color: var(--accent-color);
+            margin-bottom: 5px;
+        }
+
+        .hero p {
+            color: var(--text-secondary);
+            font-size: 14px;
+        }
+
+        .menu-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-top: 20px;
+        }
+
+        .menu-btn {
+            background: #2a2a2a;
+            border: 1px solid #333;
+            color: var(--text-color);
+            padding: 16px;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: bold;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .menu-btn:active {
+            background: #333;
+        }
+
+        .menu-btn.primary {
+            background: var(--primary-color);
+            border: none;
+        }
+
+        /* Game Screen */
+        .game-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .back-btn {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 16px;
+            cursor: pointer;
+        }
+
+        .status-bar {
+            font-size: 14px;
+            color: var(--accent-color);
+            font-weight: bold;
+        }
+
+        .board-container {
+            width: 100%;
+            aspect-ratio: 1;
+            background: #262421;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+            margin: auto 0;
+        }
+
+        .chessboard {
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            grid-template-rows: repeat(8, 1fr);
+            width: 100%;
+            height: 100%;
+        }
+
+        .square {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 36px;
+            cursor: pointer;
+            position: relative;
+        }
+
+        .square.light { background-color: var(--light-square); }
+        .square.dark { background-color: var(--dark-square); }
+        
+        .square.selected {
+            background-color: rgba(212, 175, 55, 0.6) !important;
+        }
+
+        .square.highlight::after {
+            content: '';
+            width: 16px;
+            height: 16px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 50%;
+            position: absolute;
+        }
+
+        .game-controls {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .action-btn {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            background: #333;
+            color: var(--text-color);
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .action-btn:active { opacity: 0.7; }
+
+        /* Settings Screen */
+        .setting-group {
+            margin-bottom: 20px;
+        }
+
+        .setting-group label {
+            display: block;
+            color: var(--text-secondary);
+            font-size: 13px;
+            margin-bottom: 8px;
+        }
+
+        .theme-selector {
+            display: flex;
+            gap: 10px;
+        }
+
+        .theme-opt {
+            flex: 1;
+            padding: 10px;
+            border-radius: 6px;
+            border: 2px solid #444;
+            background: #222;
+            color: white;
+            text-align: center;
+            cursor: pointer;
+        }
+
+        .theme-opt.active {
+            border-color: var(--accent-color);
+        }
+    </style>
 </head>
 <body>
-    <div class="app-container">
-        <!-- Header -->
-        <header>
-            <h1>TwistChess <span>♔</span></h1>
-            <p id="game-status">Turn: White</p>
-        </header>
 
-        <!-- Chess Board Container -->
-        <div class="board-container">
-            <div id="chessboard" class="board">
-                <!-- Board squares will be generated via JavaScript -->
+    <div class="app-container">
+        
+        <!-- HOME SCREEN -->
+        <div id="home-screen" class="screen">
+            <div class="hero">
+                <h1>TwistChess</h1>
+                <p>The Ultimate Mobile Chess Experience</p>
+            </div>
+            <div class="menu-list">
+                <button class="menu-btn primary" onclick="startGame('standard')">
+                    <span>⚔️ Play Standard</span> <span>➔</span>
+                </button>
+                <button class="menu-btn" onclick="startGame('bot')">
+                    <span>🤖 Play vs Bot (Easy)</span> <span>➔</span>
+                </button>
+                <button class="menu-btn" onclick="openPuzzles()">
+                    <span>🧩 Daily Puzzles</span> <span>➔</span>
+                </button>
+                <button class="menu-btn" onclick="openSettings()">
+                    <span>⚙️ Settings & Themes</span> <span>➔</span>
+                </button>
             </div>
         </div>
 
-        <!-- Controls -->
-        <div class="controls">
-            <button id="restart-btn" class="btn">New Game</button>
-            <button id="undo-btn" class="btn secondary">Undo</button>
+        <!-- GAME SCREEN -->
+        <div id="game-screen" class="screen hidden">
+            <div class="game-header">
+                <button class="back-btn" onclick="goHome()">❮ Menu</button>
+                <div id="game-status" class="status-bar">White's Turn</div>
+                <div style="width: 40px;"></div>
+            </div>
+
+            <div class="board-container">
+                <div id="chessboard" class="chessboard"></div>
+            </div>
+
+            <div class="game-controls">
+                <button class="action-btn" onclick="resetGame()">New Game</button>
+                <button class="action-btn" onclick="undoMove()">Undo</button>
+            </div>
         </div>
+
+        <!-- SETTINGS SCREEN -->
+        <div id="settings-screen" class="screen hidden">
+            <div class="game-header">
+                <button class="back-btn" onclick="goHome()">❮ Menu</button>
+                <div class="status-bar">Settings</div>
+                <div style="width: 40px;"></div>
+            </div>
+
+            <div style="margin-top: 20px;">
+                <div class="setting-group">
+                    <label>Board Theme</label>
+                    <div class="theme-selector">
+                        <button class="theme-opt active" onclick="setTheme('default')">Classic</button>
+                        <button class="theme-opt" onclick="setTheme('wood')">Wood</button>
+                        <button class="theme-opt" onclick="setTheme('blue')">Ocean</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
     </div>
 
-    <script src="script.js"></script>
+    <script>
+        // Initialize Chess Engine
+        let game = new Chess();
+        let selectedSquare = null;
+        let gameMode = 'standard'; // 'standard' or 'bot'
+        
+        const pieceSymbols = {
+            p: '♟', r: '♜', n: '♞', b: '♝', q: '♛', k: '♚',
+            P: '♙', R: '♖', N: '♘', B: '♗', Q: '♕', K: '♔'
+        };
+
+        function switchScreen(screenId) {
+            document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden'));
+            document.getElementById(screenId).classList.remove('hidden');
+        }
+
+        function startGame(mode) {
+            gameMode = mode;
+            game.reset();
+            switchScreen('game-screen');
+            renderBoard();
+            updateStatus();
+        }
+
+        function goHome() {
+            switchScreen('home-screen');
+        }
+
+        function openSettings() {
+            switchScreen('settings-screen');
+        }
+
+        function openPuzzles() {
+            alert("Daily Puzzles coming up next! Stay tuned.");
+        }
+
+        function setTheme(themeName) {
+            document.querySelectorAll('.theme-opt').forEach(b => b.classList.remove('active-opt'));
+            event.target.classList.add('active-opt');
+            
+            if(themeName === 'default') {
+                document.documentElement.removeAttribute('data-theme');
+            } else {
+                document.documentElement.setAttribute('data-theme', themeName);
+            }
+        }
+
+        function renderBoard() {
+            const boardEl = document.getElementById('chessboard');
+            boardEl.innerHTML = '';
+            const board = game.board();
+
+            for (let r = 0; r < 8; r++) {
+                for (let c = 0; c < 8; c++) {
+                    const squareEl = document.createElement('div');
+                    const isLight = (r + c) % 2 === 0;
+                    squareEl.className = `square ${isLight ? 'light' : 'dark'}`;
+                    
+                    const squareCoord = String.fromCharCode(97 + c) + (8 - r);
+                    squareEl.dataset.square = squareCoord;
+
+                    const piece = board[r][c];
+                    if (piece) {
+                        const pieceKey = piece.color === 'w' ? piece.type.toUpperCase() : piece.type;
+                        squareEl.textContent = pieceSymbols[pieceKey];
+                    }
+
+                    if (selectedSquare === squareCoord) {
+                        squareEl.classList.add('selected');
+                    }
+
+                    squareEl.addEventListener('click', () => handleSquareClick(squareCoord));
+                    boardEl.appendChild(squareEl);
+                }
+            }
+        }
+
+        function handleSquareClick(square) {
+            if (selectedSquare === null) {
+                const piece = game.get(square);
+                if (piece && piece.color === game.turn()) {
+                    selectedSquare = square;
+                    renderBoard();
+                }
+            } else {
+                try {
+                    const move = game.move({
+                        from: selectedSquare,
+                        to: square,
+                        promotion: 'q' // auto promote to queen for simplicity
+                    });
+
+                    if (move) {
+                        selectedSquare = null;
+                        renderBoard();
+                        updateStatus();
+
+                        // If playing vs bot and it's black's turn
+                        if (gameMode === 'bot' && !game.game_over() && game.turn() === 'b') {
+                            document.getElementById('game-status').textContent = "Bot is thinking...";
+                            setTimeout(makeBotMove, 500);
+                        }
+                    } else {
+                        selectedSquare = null;
+                        renderBoard();
+                    }
+                } catch (e) {
+                    selectedSquare = null;
+                    renderBoard();
+                }
+            }
+        }
+
+        function makeBotMove() {
+            const moves = game.moves();
+            if (moves.length === 0) return;
+            const randomMove = moves[Math.floor(Math.random() * moves.length)];
+            game.move(randomMove);
+            renderBoard();
+            updateStatus();
+        }
+
+        function updateStatus() {
+            const statusEl = document.getElementById('game-status');
+            if (game.in_checkmate()) {
+                statusEl.textContent = `Checkmate! ${game.turn() === 'w' ? 'Black' : 'White'} wins!`;
+            } else if (game.in_draw()) {
+                statusEl.textContent = "Game drawn!";
+            } else {
+                statusEl.textContent = `${game.turn() === 'w' ? "White's Turn" : "Black's Turn"}${game.in_check() ? ' (Check!)' : ''}`;
+            }
+        }
+
+        function resetGame() {
+            game.reset();
+            selectedSquare = null;
+            renderBoard();
+            updateStatus();
+        }
+
+        function undoMove() {
+            game.undo();
+            if (gameMode === 'bot') {
+                game.undo(); // Undo bot move as well
+            }
+            selectedSquare = null;
+            renderBoard();
+            updateStatus();
+        }
+    </script>
 </body>
 </html>
