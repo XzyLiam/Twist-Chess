@@ -1,20 +1,17 @@
 # TwistChess
 
-A responsive, static HTML/CSS/JavaScript local two-player chess variant website.
+Make your first move `legendary`.
 
-## Run
-Open `index.html` in a browser. For local development, use VS Code Live Server or run `python -m http.server 8000` inside this directory and visit http://localhost:8000.
+## Q/A
 
-## Files
-- `index.html` — app layout and controls
-- `style.css` — responsive styling and themes
-- `script.js` — chess logic, modes, UI, sound, and settings
+### What’s the url?
+In the works currently.
 
-## Modes
-Classic, ROOOK, Big Board (10×10), Small Board (6×6), Hidden Queen, Pawn Horde, Knightmare, Bishop Blitz, Queen Rush, No Queens, Atomic Chess, Shuffle Chess, King Race, Pawn Wars, Mirror Army.
+### Why choose this?
+Because this website has all kinds of gamemodes, which makes your experience the best.
 
-## Limitations / important notes
-This is a local two-player prototype, not an online multiplayer service. Secret queen selection is a pass-and-play honor system; the board doesn't conceal selection from someone watching the screen. The queen-power pawn still promotes normally and can be captured. Atomic, Horde, King Race, and custom board variants are experimental adaptations, not tournament-certified rule sets. Undo is shared by both players. Pawn promotion is automatic to queen. No chess AI, clocks, accounts, or matchmaking. The application does not use a third-party chess rules engine and has not been exhaustively tested for edge cases.
+### Can i play with my friends?
+Absolutely! Just go to the sidebar, click `Friends`, and then add your friend to play a game with him/her.
 
-## GitHub Pages
-Push these files to a repository, then go to Settings → Pages → Deploy from a branch → main / root.
+### Are there custom Themes?
+Yes! Go to settings, and choose your theme.
