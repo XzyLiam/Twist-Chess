@@ -1,26 +1,2665 @@
-const MODES=[{id:'classic',name:'Classic Chess',icon:'♟',tag:'THE ORIGINAL',desc:'Traditional chess, with castling, en passant, promotion, check and checkmate.'},{id:'roook',name:'ROOOK',icon:'♜',tag:'ROOK TAKEOVER',desc:'Every knight and bishop is replaced with a rook. Absolute tower madness.'},{id:'big',name:'Big Board',icon:'▦',tag:'10 × 10',desc:'Ten files, ten ranks, extra pieces, and a much bigger battlefield.'},{id:'small',name:'Small Board',icon:'▥',tag:'6 × 6',desc:'Six files and six ranks. Less space, more immediate action.'},{id:'hidden',name:'Hidden Queen',icon:'♛',tag:'SECRET POWER',desc:'Each player secretly chooses a pawn with queen movement. It still looks like a pawn.'},{id:'horde',name:'Pawn Horde',icon:'♙',tag:'SWARM',desc:'White commands an army of pawns against Black’s regular army.'},{id:'knights',name:'Knightmare',icon:'♞',tag:'HORSE POWER',desc:'All bishops and rooks are knights. Expect forks everywhere.'},{id:'bishops',name:'Bishop Blitz',icon:'♗',tag:'DIAGONAL CHAOS',desc:'Every rook and knight becomes a bishop.'},{id:'queens',name:'Queen Rush',icon:'♕',tag:'ROYAL MAYHEM',desc:'All major and minor pieces become queens. Protect your king.'},{id:'noqueens',name:'No Queens',icon:'◇',tag:'PURE TACTICS',desc:'Play without starting queens. Pawn promotion is still possible.'},{id:'atomic',name:'Atomic Chess',icon:'✹',tag:'EXPLOSIVE',desc:'Captures explode adjacent non-pawn pieces. Kings cannot capture.'},{id:'random',name:'Shuffle Chess',icon:'⤨',tag:'RANDOM SETUP',desc:'Randomized back rank with bishops on opposite colors and king between rooks.'},{id:'racing',name:'King Race',icon:'♔',tag:'RACE TO THE TOP',desc:'Get your king to the opponent’s home rank to win.'},{id:'pawns',name:'Pawn Wars',icon:'♙',tag:'ONLY PAWNS',desc:'Kings and pawns only. Every promotion counts.'},{id:'mirror',name:'Mirror Army',icon:'⇄',tag:'UNUSUAL FORMATION',desc:'Swap bishops and knights for a fresh opening position.'}];
-const THEMES=[['Forest','#e0e8d4','#76966c'],['Ocean','#e4edf4','#618aab'],['Royal','#e6d9ef','#8b69a8'],['Walnut','#e9d5b7','#a47c58'],['Slate','#cbd5df','#64748b'],['Neon','#c9f3cb','#37836d'],['Rose','#f4dce3','#bc778e']];
-const SYMBOLS={w:{k:'♔',q:'♕',r:'♖',b:'♗',n:'♘',p:'♙'},b:{k:'♚',q:'♛',r:'♜',b:'♝',n:'♞',p:'♟'}};
-let cfg={theme:0,style:'classic',orientation:'white',sound:true,legal:true,coords:true,animation:true,pieceSize:90};try{Object.assign(cfg,JSON.parse(localStorage.getItem('twistchess-settings')||'{}'))}catch{}
-let game,selection=null,legal=[],flipped=false,audioCtx=null;
-const $=id=>document.getElementById(id),opposite=c=>c==='w'?'b':'w',inside=(r,c,n)=>r>=0&&c>=0&&r<n&&c<n,copy=b=>b.map(row=>row.map(p=>p?{...p}:null));
-function sound(type){if(!cfg.sound)return;try{audioCtx ||=new (window.AudioContext||window.webkitAudioContext)();let osc=audioCtx.createOscillator(),gain=audioCtx.createGain();osc.connect(gain);gain.connect(audioCtx.destination);osc.type=type==='capture'?'sawtooth':'sine';osc.frequency.setValueAtTime(type==='check'?550:type==='capture'?220:390,audioCtx.currentTime);osc.frequency.exponentialRampToValueAtTime(type==='check'?760:120,audioCtx.currentTime+.11);gain.gain.setValueAtTime(.06,audioCtx.currentTime);gain.gain.exponentialRampToValueAtTime(.001,audioCtx.currentTime+.13);osc.start();osc.stop(audioCtx.currentTime+.14)}catch{}}
-function backRank(n,mode){let b=n===6?['r','n','q','k','n','r']:n===10?['r','n','b','q','r','k','q','b','n','r']:['r','n','b','q','k','b','n','r'];if(mode==='random'&&n===8){let a=Array(8).fill(null),ev=[0,2,4,6],od=[1,3,5,7],pick=x=>x.splice(Math.floor(Math.random()*x.length),1)[0];a[pick(ev)]='b';a[pick(od)]='b';let free=a.map((x,i)=>x===null?i:null).filter(x=>x!==null);a[pick(free)]='q';a[pick(free)]='n';a[pick(free)]='n';free.sort((a,b)=>a-b);a[free[0]]='r';a[free[1]]='k';a[free[2]]='r';return a}return b.map(p=>mode==='roook'&&['n','b'].includes(p)?'r':mode==='knights'&&['r','b'].includes(p)?'n':mode==='bishops'&&['r','n'].includes(p)?'b':mode==='queens'&&['r','n','b'].includes(p)?'q':mode==='noqueens'&&p==='q'?null:mode==='mirror'&&p==='b'?'n':mode==='mirror'&&p==='n'?'b':p)}
-function startGame(mode='classic'){let n=mode==='big'?10:mode==='small'?6:8,b=Array.from({length:n},()=>Array(n).fill(null)),back=backRank(n,mode);for(let c=0;c<n;c++){if(mode!=='pawns'){if(back[c]){b[0][c]={t:back[c],c:'b',m:false};b[n-1][c]={t:back[c],c:'w',m:false}}}b[1][c]={t:'p',c:'b',m:false};b[n-2][c]={t:'p',c:'w',m:false}}if(mode==='pawns'){b[0][Math.floor(n/2)]={t:'k',c:'b',m:false};b[n-1][Math.floor(n/2)]={t:'k',c:'w',m:false}}if(mode==='horde'){for(let r=n-4;r<n;r++)for(let c=0;c<n;c++)b[r][c]={t:'p',c:'w',m:false};b[n-1][Math.floor(n/2)]={t:'k',c:'w',m:false}}game={mode,n,b,turn:'w',moves:[],snapshots:[],ep:null,last:null,over:false,winner:null,secrets:{w:null,b:null},pending:'',notice:''};selection=null;legal=[];flipped=cfg.orientation==='black';render()}
-function kingPos(b,color){for(let r=0;r<b.length;r++)for(let c=0;c<b.length;c++)if(b[r][c]?.t==='k'&&b[r][c].c===color)return[r,c];return null}
-function attacked(b,r,c,by){let n=b.length;for(let y=0;y<n;y++)for(let x=0;x<n;x++){let p=b[y][x];if(!p||p.c!==by)continue;let dy=r-y,dx=c-x,ay=Math.abs(dy),ax=Math.abs(dx);if(p.t==='p'){if(dy===(by==='w'?-1:1)&&ax===1)return true;continue}if(p.t==='n'&&ay*ax===2)return true;if(p.t==='k'&&Math.max(ay,ax)===1)return true;if(p.t==='r'&&dy!==0&&dx!==0||p.t==='b'&&ay!==ax||p.t==='q'&&!(dy===0||dx===0||ay===ax))continue;if(!['r','b','q'].includes(p.t))continue;let sy=Math.sign(dy),sx=Math.sign(dx),yy=y+sy,xx=x+sx,clear=true;while(yy!==r||xx!==c){if(b[yy][xx]){clear=false;break}yy+=sy;xx+=sx}if(clear)return true}return false}
-function checked(b,color){let k=kingPos(b,color);return k?attacked(b,...k,opposite(color)):false}
-function pseudo(b,r,c,opts={}){let p=b[r][c],n=b.length,out=[];if(!p)return out;let add=(y,x,extra={})=>{if(inside(y,x,n)&&b[y][x]?.c!==p.c&&b[y][x]?.t!=='k')out.push({r:y,c:x,...extra})};let ray=(dirs)=>{for(let[dy,dx]of dirs){let y=r+dy,x=c+dx;while(inside(y,x,n)){if(b[y][x]){if(b[y][x].c!==p.c&&b[y][x].t!=='k')add(y,x);break}add(y,x);y+=dy;x+=dx}}};let ortho=[[1,0],[-1,0],[0,1],[0,-1]],diag=[[1,1],[1,-1],[-1,1],[-1,-1]];let secret=game.mode==='hidden'&&game.secrets[p.c]?.r===r&&game.secrets[p.c]?.c===c;if(secret){ray([...ortho,...diag]);return out}if(p.t==='p'){let d=p.c==='w'?-1:1;if(inside(r+d,c,n)&&!b[r+d][c]){add(r+d,c);if(!p.m&&r===(p.c==='w'?n-2:1)&&!b[r+2*d][c])add(r+2*d,c,{double:true})}for(let dx of [-1,1]){let y=r+d,x=c+dx;if(inside(y,x,n)&&b[y][x]&&b[y][x].c!==p.c)add(y,x);if(inside(y,x,n)&&!b[y][x]&&game.ep?.r===y&&game.ep?.c===x)add(y,x,{enpassant:true})}}else if(p.t==='n')for(let[dy,dx]of [[1,2],[2,1],[-1,2],[-2,1],[1,-2],[2,-1],[-1,-2],[-2,-1]])add(r+dy,c+dx);else if(p.t==='b')ray(diag);else if(p.t==='r')ray(ortho);else if(p.t==='q')ray([...ortho,...diag]);else if(p.t==='k'){for(let[dy,dx]of [...ortho,...diag])add(r+dy,c+dx);if(!p.m&&!opts.noCastle&&game.mode!=='atomic'){for(let dir of [-1,1]){let x=c+dir,rookX=-1;while(inside(r,x,n)){if(b[r][x]){if(b[r][x].t==='r'&&b[r][x].c===p.c&&!b[r][x].m)rookX=x;break}x+=dir}if(rookX!==-1&&inside(r,c+2*dir,n)&&!b[r][c+dir]&&!b[r][c+2*dir]&&!checked(b,p.c)&&!attacked(b,r,c+dir,opposite(p.c))&&!attacked(b,r,c+2*dir,opposite(p.c)))add(r,c+2*dir,{castle:true,rookX})}}}return out}
-function apply(b,from,to,mode){let n=b.length,p={...b[from.r][from.c],m:true},victim=b[to.r][to.c],out=copy(b);out[from.r][from.c]=null;if(to.enpassant){victim=out[from.r][to.c];out[from.r][to.c]=null}out[to.r][to.c]=p;if(to.castle){let dir=Math.sign(to.c-from.c);out[to.r][to.c-dir]=out[to.r][to.rookX];out[to.r][to.rookX]=null;if(out[to.r][to.c-dir])out[to.r][to.c-dir].m=true}if(mode==='atomic'&&victim){for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){let y=to.r+dy,x=to.c+dx;if(inside(y,x,n)&&(dy===0&&dx===0||out[y][x]?.t!=='p'))out[y][x]=null}}return{b:out,victim}}
-function validMoves(r,c){let p=game.b[r][c];if(!p)return[];return pseudo(game.b,r,c).filter(to=>{let b=apply(game.b,{r,c},to,game.mode).b;if(game.mode==='atomic'){return!!kingPos(b,p.c)&&(!kingPos(b,opposite(p.c))||!checked(b,p.c))}return!checked(b,p.c)})}
-function allMoves(color){let out=[];for(let r=0;r<game.n;r++)for(let c=0;c<game.n;c++)if(game.b[r][c]?.c===color)for(let to of validMoves(r,c))out.push({from:{r,c},to});return out}
-function squareName(r,c){return String.fromCharCode(97+c)+(game.n-r)}
-function selectSquare(r,c){if(game.over)return;let p=game.b[r][c];if(game.mode==='hidden'&&game.pending){if(p?.t==='p'&&p.c===game.pending&&r===(p.c==='w'?game.n-2:1)){game.secrets[game.pending]={r,c};game.pending=game.pending==='w'?'b':'';game.notice=game.pending?'Black: select your secret pawn (White, look away).':'Both secret queens selected. White moves first.';selection=null;legal=[];render();return}game.notice='Select one of your starting pawns.';render();return}if(selection){let to=legal.find(m=>m.r===r&&m.c===c);if(to){move(selection,to);return}}if(p&&p.c===game.turn){selection={r,c};legal=validMoves(r,c)}else{selection=null;legal=[]}render()}
-function move(from,to){let p=game.b[from.r][from.c],before=copy(game.b),result=apply(game.b,from,to,game.mode),capture=!!result.victim;game.snapshots.push({b:before,ep:game.ep,last:game.last,turn:game.turn,secrets:JSON.parse(JSON.stringify(game.secrets)),over:game.over,winner:game.winner});game.b=result.b;let name=(p.t==='p'?'':p.t.toUpperCase())+squareName(from.r,from.c)+(capture?'×':'–')+squareName(to.r,to.c);if(to.castle)name=to.c>from.c?'O-O':'O-O-O';if(p.t==='p'&&(to.r===0||to.r===game.n-1)){game.b[to.r][to.c].t='q';name+='=Q'}if(game.mode==='hidden'){let s=game.secrets[p.c];if(s&&s.r===from.r&&s.c===from.c)game.secrets[p.c]={r:to.r,c:to.c};if(game.secrets[opposite(p.c)]?.r===to.r&&game.secrets[opposite(p.c)]?.c===to.c)game.secrets[opposite(p.c)]=null}game.ep=to.double?{r:(from.r+to.r)/2,c:from.c}:null;game.last={from,to};game.turn=opposite(game.turn);game.moves.push(name);selection=null;legal=[];if(!kingPos(game.b,game.turn)){game.over=true;game.winner=p.c}else if(game.mode==='racing'&&p.t==='k'&&to.r===(p.c==='w'?0:game.n-1)){game.over=true;game.winner=p.c}else if(game.mode==='horde'&&game.turn==='w'&&!game.b.some(row=>row.some(q=>q?.c==='w'&&q.t==='p'))){game.over=true;game.winner='b'}else if(!allMoves(game.turn).length){game.over=true;game.winner=checked(game.b,game.turn)?p.c:'draw'}sound(checked(game.b,game.turn)?'check':capture?'capture':'move');render()}
-function undo(){if(!game.snapshots.length)return;let s=game.snapshots.pop();Object.assign(game,s);game.moves.pop();selection=null;legal=[];render()}
-function render(){let mode=MODES.find(m=>m.id===game.mode);$('modeTitle').textContent=mode.name;$('modeDescription').textContent=mode.desc;$('board').style.setProperty('--size',game.n);$('board').classList.toggle('animated',cfg.animation);$('board').style.setProperty('--piece-scale',cfg.pieceSize/100);$('board').replaceChildren();let n=game.n;for(let vr=0;vr<n;vr++)for(let vc=0;vc<n;vc++){let r=flipped?n-1-vr:vr,c=flipped?n-1-vc:vc,p=game.b[r][c],sq=document.createElement('button');sq.className='square'+((r+c)%2?' dark-square':'');sq.setAttribute('aria-label',squareName(r,c)+(p?' '+(p.c==='w'?'white ':'black ')+p.t:''));if(selection?.r===r&&selection?.c===c)sq.classList.add('selected');if(game.last&&(game.last.from.r===r&&game.last.from.c===c||game.last.to.r===r&&game.last.to.c===c))sq.classList.add('lastmove');if(cfg.legal&&legal.some(m=>m.r===r&&m.c===c))sq.classList.add(p?'capture-target':'legal');if(p){let piece=document.createElement('span');piece.className='piece '+(p.c==='w'?'white-piece':'black-piece');piece.textContent=cfg.style==='letters'?p.t.toUpperCase():SYMBOLS[p.c][p.t];if(cfg.style==='solid')piece.style.fontWeight='900';sq.append(piece)}if(cfg.coords&&vc===0){let el=document.createElement('span');el.className='coord';el.textContent=n-r;sq.append(el)}if(cfg.coords&&vr===n-1){let el=document.createElement('span');el.className='coord file';el.textContent=String.fromCharCode(97+c);sq.append(el)}sq.onclick=()=>selectSquare(r,c);$('board').append(sq)}let turn=game.turn==='w'?'White':'Black';$('turnLabel').textContent=game.over?(game.winner==='draw'?'½ Draw':(game.winner==='w'?'♔ White':'♚ Black')+' wins!'):(game.turn==='w'?'♔ ':'♚ ')+turn+(checked(game.b,game.turn)?' · CHECK':'');$('whiteStatus').textContent=game.over?'Game finished':game.turn==='w'?'To move':'Waiting';$('blackStatus').textContent=game.over?'Game finished':game.turn==='b'?'To move':'Waiting';$('history').replaceChildren();if(!game.moves.length)$('history').innerHTML='<div class="empty-history">Your story begins with the first move.</div>';else for(let i=0;i<game.moves.length;i+=2){let row=document.createElement('div');row.className='move-row';for(let value of [Math.floor(i/2)+1+'.',game.moves[i],game.moves[i+1]||'']){let cell=document.createElement('span');cell.textContent=value;row.append(cell)}$('history').append(row)}$('history').scrollTop=$('history').scrollHeight;let notice=$('secretNotice');notice.classList.toggle('hidden',game.mode!=='hidden');notice.textContent=game.mode==='hidden'?(game.pending?game.notice:'♛ Secret queens are armed. They look like pawns but move like queens.') :'';$('tipText').textContent=game.mode==='hidden'?'Secret pawn selection is private only when players look away during setup.':'Select a piece to see its legal moves. Play with a friend on the same device.'}
-function setView(view){document.querySelectorAll('.view').forEach(x=>x.classList.add('hidden'));$(view+'View').classList.remove('hidden');document.querySelectorAll('.nav').forEach(x=>x.classList.toggle('active',x.dataset.view===view));let titles={play:['Make your next move','legendary.','Classic strategy. Unpredictable rules. Endless rematches.'],modes:['Pick your kind of','chaos.','A whole universe of chess, each with a different twist.'],settings:['Make it feel','yours.','Every detail, tuned to the way you play.']};let t=titles[view];$('pageTitle').innerHTML=t[0]+' <em>'+t[1]+'</em>';$('pageSubtitle').textContent=t[2]}
-function saveSettings(){localStorage.setItem('twistchess-settings',JSON.stringify(cfg));applySettings();render()}
-function applySettings(){let theme=THEMES[cfg.theme]||THEMES[0];document.documentElement.style.setProperty('--board-light',theme[1]);document.documentElement.style.setProperty('--board-dark',theme[2]);document.querySelectorAll('.theme-choice').forEach((x,i)=>x.classList.toggle('active',i===cfg.theme));for(let[id,key]of [['pieceStyle','style'],['orientation','orientation'],['soundToggle','sound'],['legalToggle','legal'],['coordsToggle','coords'],['animationToggle','animation'],['pieceSize','pieceSize']]){let el=$(id);if(el.type==='checkbox')el.checked=cfg[key];else el.value=cfg[key]}}
-function init(){for(let m of MODES){let el=document.createElement('article');el.className='mode-card';el.innerHTML='<div class="mode-emoji">'+m.icon+'</div><h3>'+m.name+'</h3><div class="mode-tag">'+m.tag+'</div><p>'+m.desc+'</p><button>Play this mode →</button>';el.querySelector('button').onclick=()=>{startGame(m.id);if(m.id==='hidden'){game.pending='w';game.notice='White: choose a secret pawn. Black, look away!';render()}setView('play')};$('modeGrid').append(el)}$('modeCount').textContent=' · '+MODES.length+' MODES';THEMES.forEach((t,i)=>{let btn=document.createElement('button');btn.className='theme-choice';btn.title=t[0];btn.style.setProperty('--l',t[1]);btn.style.setProperty('--d',t[2]);btn.onclick=()=>{cfg.theme=i;saveSettings()};$('themeChoices').append(btn)});document.querySelectorAll('.nav').forEach(b=>b.onclick=()=>setView(b.dataset.view));$('newGame').onclick=()=>{let m=game.mode;startGame(m);if(m==='hidden'){game.pending='w';game.notice='White: choose a secret pawn. Black, look away!';render()}};$('undoBtn').onclick=undo;$('flipBtn').onclick=()=>{flipped=!flipped;render()};for(let[id,key]of [['pieceStyle','style'],['orientation','orientation'],['soundToggle','sound'],['legalToggle','legal'],['coordsToggle','coords'],['animationToggle','animation'],['pieceSize','pieceSize']]){$(id).addEventListener('input',e=>{cfg[key]=e.target.type==='checkbox'?e.target.checked:key==='pieceSize'?Number(e.target.value):e.target.value;if(key==='orientation')flipped=cfg.orientation==='black';saveSettings()})}$('resetSettings').onclick=()=>{cfg={theme:0,style:'classic',orientation:'white',sound:true,legal:true,coords:true,animation:true,pieceSize:90};flipped=false;saveSettings()};startGame();applySettings()}
-init();
+
+"use strict";
+
+/* ============================================================
+   TWISTCHESS
+   Main gameplay engine
+   ============================================================ */
+
+(() => {
+
+  /* ==========================================================
+     1. CONSTANTS
+     ========================================================== */
+
+  const STORAGE_KEY = "twistchess-settings-v1";
+
+  const PIECES = {
+    classic: {
+      w: {
+        k: "♔", q: "♕", r: "♖",
+        b: "♗", n: "♘", p: "♙"
+      },
+      b: {
+        k: "♚", q: "♛", r: "♜",
+        b: "♝", n: "♞", p: "♟"
+      }
+    },
+
+    solid: {
+      w: {
+        k: "♚", q: "♛", r: "♜",
+        b: "♝", n: "♞", p: "♟"
+      },
+      b: {
+        k: "♚", q: "♛", r: "♜",
+        b: "♝", n: "♞", p: "♟"
+      }
+    },
+
+    letters: {
+      w: {
+        k: "K", q: "Q", r: "R",
+        b: "B", n: "N", p: "P"
+      },
+      b: {
+        k: "K", q: "Q", r: "R",
+        b: "B", n: "N", p: "P"
+      }
+    }
+  };
+
+  const THEMES = [
+    {
+      id: "forest",
+      name: "Forest",
+      light: "#e0e8d4",
+      dark: "#76966c"
+    },
+    {
+      id: "classic",
+      name: "Classic",
+      light: "#f0d9b5",
+      dark: "#b58863"
+    },
+    {
+      id: "ocean",
+      name: "Ocean",
+      light: "#dcebf2",
+      dark: "#638ba5"
+    },
+    {
+      id: "midnight",
+      name: "Midnight",
+      light: "#b9c3d2",
+      dark: "#45516c"
+    },
+    {
+      id: "rose",
+      name: "Rose",
+      light: "#f5dfe4",
+      dark: "#c9859c"
+    },
+    {
+      id: "purple",
+      name: "Purple",
+      light: "#e8ddf4",
+      dark: "#9475b9"
+    },
+    {
+      id: "monochrome",
+      name: "Monochrome",
+      light: "#e5e5e5",
+      dark: "#777777"
+    }
+  ];
+
+  const MODES = [
+    {
+      id: "classic",
+      name: "Classic Chess",
+      icon: "♟",
+      tag: "ORIGINAL",
+      description: "Traditional chess with standard pieces and rules."
+    },
+    {
+      id: "roook",
+      name: "ROOOK",
+      icon: "♜",
+      tag: "CHAOS",
+      description: "Every bishop and knight is replaced by a rook."
+    },
+    {
+      id: "big",
+      name: "Big Board",
+      icon: "▦",
+      tag: "EXPANDED",
+      description: "A huge 10×10 battlefield with extra pieces."
+    },
+    {
+      id: "small",
+      name: "Small Board",
+      icon: "▥",
+      tag: "FAST",
+      description: "A compact 6×6 battlefield."
+    },
+    {
+      id: "hidden",
+      name: "Hidden Queen",
+      icon: "♛",
+      tag: "SECRET",
+      description: "Choose a pawn that secretly moves like a queen."
+    },
+    {
+      id: "horde",
+      name: "Pawn Horde",
+      icon: "♙",
+      tag: "SURVIVAL",
+      description: "A large pawn army challenges a regular army."
+    },
+    {
+      id: "knightmare",
+      name: "Knightmare",
+      icon: "♞",
+      tag: "TACTICAL",
+      description: "Replace bishops and rooks with knights."
+    },
+    {
+      id: "bishop",
+      name: "Bishop Blitz",
+      icon: "♗",
+      tag: "DIAGONAL",
+      description: "Replace knights and rooks with bishops."
+    },
+    {
+      id: "queenrush",
+      name: "Queen Rush",
+      icon: "♕",
+      tag: "POWER",
+      description: "Major and minor pieces become queens."
+    },
+    {
+      id: "atomic",
+      name: "Atomic",
+      icon: "✹",
+      tag: "EXPLOSIVE",
+      description: "Captures explode nearby non-pawn pieces."
+    },
+    {
+      id: "shuffle",
+      name: "Shuffle",
+      icon: "⤨",
+      tag: "RANDOM",
+      description: "Start with randomized back ranks."
+    },
+    {
+      id: "kingrace",
+      name: "King Race",
+      icon: "♔",
+      tag: "RACE",
+      description: "Race your king to the opposite edge."
+    },
+    {
+      id: "pawnwars",
+      name: "Pawn Wars",
+      icon: "♙",
+      tag: "MINIMAL",
+      description: "Only kings and pawns remain."
+    },
+    {
+      id: "noqueens",
+      name: "No Queens",
+      icon: "◇",
+      tag: "STRATEGY",
+      description: "Chess without starting queens."
+    },
+    {
+      id: "mirror",
+      name: "Mirror Army",
+      icon: "⇄",
+      tag: "TWIST",
+      description: "Play with horizontally mirrored back ranks."
+    }
+  ];
+
+  const DEFAULT_SETTINGS = {
+    theme: "forest",
+    pieceStyle: "classic",
+    orientation: "white",
+    sound: true,
+    legal: true,
+    coords: true,
+    animation: true,
+    pieceSize: 90
+  };
+
+  const $ = id => document.getElementById(id);
+
+  const FILES = "abcdefghij";
+
+  const KNIGHT_STEPS = [
+    [-2, -1], [-2, 1],
+    [-1, -2], [-1, 2],
+    [1, -2], [1, 2],
+    [2, -1], [2, 1]
+  ];
+
+  const KING_STEPS = [
+    [-1, -1], [-1, 0], [-1, 1],
+    [0, -1],             [0, 1],
+    [1, -1],  [1, 0],   [1, 1]
+  ];
+
+  const ROOK_DIRECTIONS = [
+    [-1, 0], [1, 0],
+    [0, -1], [0, 1]
+  ];
+
+  const BISHOP_DIRECTIONS = [
+    [-1, -1], [-1, 1],
+    [1, -1], [1, 1]
+  ];
+
+  const QUEEN_DIRECTIONS = [
+    ...ROOK_DIRECTIONS,
+    ...BISHOP_DIRECTIONS
+  ];
+
+  /* ==========================================================
+     2. APPLICATION STATE
+     ========================================================== */
+
+  let settings = loadSettings();
+
+  let game = null;
+
+  let selected = null;
+
+  let legalTargets = [];
+
+  let history = [];
+
+  let moveHistory = [];
+
+  let flipped = false;
+
+  let currentMode = "classic";
+
+  let audioContext = null;
+
+  let gameVersion = 0;
+
+  /* ==========================================================
+     3. STORAGE
+     ========================================================== */
+
+  function loadSettings() {
+    try {
+      const saved = JSON.parse(
+        localStorage.getItem(STORAGE_KEY) || "{}"
+      );
+
+      return {
+        ...DEFAULT_SETTINGS,
+        ...saved
+      };
+    } catch {
+      return { ...DEFAULT_SETTINGS };
+    }
+  }
+
+  function saveSettings() {
+    try {
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify(settings)
+      );
+    } catch {
+      // The game remains playable if storage is disabled.
+    }
+  }
+
+  /* ==========================================================
+     4. BOARD UTILITIES
+     ========================================================== */
+
+  function inside(board, r, c) {
+    return (
+      r >= 0 &&
+      c >= 0 &&
+      r < board.length &&
+      c < board[0].length
+    );
+  }
+
+  function createPiece(type, color, extra = {}) {
+    return {
+      type,
+      color,
+      moved: false,
+      secret: false,
+      ...extra
+    };
+  }
+
+  function cloneBoard(board) {
+    return board.map(row =>
+      row.map(piece => piece ? { ...piece } : null)
+    );
+  }
+
+  function cloneGame(source) {
+    return {
+      ...source,
+      board: cloneBoard(source.board),
+      enPassant: source.enPassant
+        ? { ...source.enPassant }
+        : null,
+      secrets: { ...source.secrets },
+      captured: {
+        w: [...source.captured.w],
+        b: [...source.captured.b]
+      }
+    };
+  }
+
+  function other(color) {
+    return color === "w" ? "b" : "w";
+  }
+
+  function colorName(color) {
+    return color === "w" ? "White" : "Black";
+  }
+
+  function squareName(r, c, size) {
+    return FILES[c] + (size - r);
+  }
+
+  function getMode(id) {
+    return MODES.find(mode => mode.id === id) || MODES[0];
+  }
+
+  function isFriendly(piece, color) {
+    return piece && piece.color === color;
+  }
+
+  function isEnemy(piece, color) {
+    return piece && piece.color !== color;
+  }
+
+  function sameSquare(a, b) {
+    return (
+      a &&
+      b &&
+      a.r === b.r &&
+      a.c === b.c
+    );
+  }
+
+  /* ==========================================================
+     5. INITIAL BOARD GENERATION
+     ========================================================== */
+
+  function emptyBoard(size) {
+    return Array.from(
+      { length: size },
+      () => Array(size).fill(null)
+    );
+  }
+
+  function standardBackRank() {
+    return [
+      "r", "n", "b", "q",
+      "k", "b", "n", "r"
+    ];
+  }
+
+  function modeBackRank(mode) {
+    const rank = standardBackRank();
+
+    if (mode === "roook") {
+      return [
+        "r", "r", "r", "q",
+        "k", "r", "r", "r"
+      ];
+    }
+
+    if (mode === "knightmare") {
+      return [
+        "n", "n", "n", "q",
+        "k", "n", "n", "n"
+      ];
+    }
+
+    if (mode === "bishop") {
+      return [
+        "b", "b", "b", "q",
+        "k", "b", "b", "b"
+      ];
+    }
+
+    if (mode === "queenrush") {
+      return [
+        "q", "q", "q", "q",
+        "k", "q", "q", "q"
+      ];
+    }
+
+    if (mode === "mirror") {
+      return [...rank].reverse();
+    }
+
+    if (mode === "noqueens") {
+      return [
+        "r", "n", "b", null,
+        "k", "b", "n", "r"
+      ];
+    }
+
+    if (mode === "pawnwars") {
+      return [
+        null, null, null, null,
+        "k", null, null, null
+      ];
+    }
+
+    if (mode === "shuffle") {
+      return shuffledBackRank();
+    }
+
+    return rank;
+  }
+
+  function shuffledBackRank() {
+    const rank = Array(8).fill(null);
+
+    const even = [0, 2, 4, 6];
+    const odd = [1, 3, 5, 7];
+
+    const firstBishop =
+      even[Math.floor(Math.random() * even.length)];
+
+    const secondBishop =
+      odd[Math.floor(Math.random() * odd.length)];
+
+    rank[firstBishop] = "b";
+    rank[secondBishop] = "b";
+
+    function freeSquares() {
+      return rank
+        .map((piece, index) => piece === null ? index : -1)
+        .filter(index => index !== -1);
+    }
+
+    function placeRandom(type) {
+      const free = freeSquares();
+      const chosen =
+        free[Math.floor(Math.random() * free.length)];
+
+      rank[chosen] = type;
+    }
+
+    placeRandom("q");
+    placeRandom("n");
+    placeRandom("n");
+
+    const remaining = freeSquares().sort((a, b) => a - b);
+
+    rank[remaining[0]] = "r";
+    rank[remaining[1]] = "k";
+    rank[remaining[2]] = "r";
+
+    return rank;
+  }
+
+  function placeArmy(board, color, backRank) {
+    const size = board.length;
+
+    const backRow = color === "w" ? size - 1 : 0;
+    const pawnRow = color === "w" ? size - 2 : 1;
+
+    backRank.forEach((type, col) => {
+      if (type) {
+        board[backRow][col] = createPiece(type, color);
+      }
+    });
+
+    for (let c = 0; c < size; c++) {
+      board[pawnRow][c] = createPiece("p", color);
+    }
+  }
+
+  function setupBigBoard(board) {
+    const back = [
+      "r", "n", "b", "r", "q",
+      "k", "r", "b", "n", "r"
+    ];
+
+    placeArmy(board, "b", back);
+    placeArmy(board, "w", back);
+  }
+
+  function setupSmallBoard(board) {
+    const back = [
+      "r", "n", "q",
+      "k", "n", "r"
+    ];
+
+    placeArmy(board, "b", back);
+    placeArmy(board, "w", back);
+  }
+
+  function setupHorde(board) {
+    placeArmy(board, "b", standardBackRank());
+
+    const size = board.length;
+
+    // White's horde deliberately has no king.
+    // Its objective is to eliminate Black's army.
+
+    for (let r = 4; r < size; r++) {
+      for (let c = 0; c < size; c++) {
+        board[r][c] = createPiece("p", "w");
+      }
+    }
+  }
+
+  function setupKingRace(board) {
+    const size = board.length;
+
+    board[0][3] = createPiece("k", "b");
+    board[size - 1][4] = createPiece("k", "w");
+
+    const whiteRow = size - 2;
+    const blackRow = 1;
+
+    for (const c of [1, 2, 5, 6]) {
+      board[whiteRow][c] = createPiece("n", "w");
+      board[blackRow][c] = createPiece("n", "b");
+    }
+  }
+
+  function setupBoard(mode) {
+    const size = mode === "big"
+      ? 10
+      : mode === "small"
+        ? 6
+        : 8;
+
+    const board = emptyBoard(size);
+
+    if (mode === "big") {
+      setupBigBoard(board);
+    } else if (mode === "small") {
+      setupSmallBoard(board);
+    } else if (mode === "horde") {
+      setupHorde(board);
+    } else if (mode === "kingrace") {
+      setupKingRace(board);
+    } else {
+      const back = modeBackRank(mode);
+
+      placeArmy(board, "b", back);
+      placeArmy(board, "w", back);
+    }
+
+    return board;
+  }
+
+  /* ==========================================================
+     6. GAME CREATION
+     ========================================================== */
+
+  function createGame(mode) {
+    return {
+      mode,
+      board: setupBoard(mode),
+      turn: "w",
+      fullmove: 1,
+      halfmove: 0,
+      enPassant: null,
+      secrets: {
+        w: null,
+        b: null
+      },
+      hiddenSetup: mode === "hidden" ? "w" : null,
+      captured: {
+        w: [],
+        b: []
+      },
+      winner: null,
+      result: null,
+      lastMove: null,
+      status: "playing"
+    };
+  }
+
+  function newGame(mode = currentMode) {
+    gameVersion++;
+
+    currentMode = mode;
+
+    game = createGame(mode);
+
+    selected = null;
+    legalTargets = [];
+
+    history = [];
+    moveHistory = [];
+
+    flipped = settings.orientation === "black";
+
+    $("modeTitle").textContent = getMode(mode).name;
+    $("modeDescription").textContent =
+      getMode(mode).description;
+
+    $("tipText").textContent =
+      "Select a piece to see its legal moves.";
+
+    showView("play");
+
+    renderAll();
+
+    playSound("start");
+  }
+
+  /* ==========================================================
+     7. ATTACK DETECTION
+     ========================================================== */
+
+  function findKing(board, color) {
+    for (let r = 0; r < board.length; r++) {
+      for (let c = 0; c < board.length; c++) {
+        const piece = board[r][c];
+
+        if (
+          piece &&
+          piece.type === "k" &&
+          piece.color === color
+        ) {
+          return { r, c };
+        }
+      }
+    }
+
+    return null;
+  }
+
+  function slidingAttacks(
+    board,
+    r,
+    c,
+    directions,
+    targetR,
+    targetC
+  ) {
+    for (const [dr, dc] of directions) {
+      let nr = r + dr;
+      let nc = c + dc;
+
+      while (inside(board, nr, nc)) {
+        if (nr === targetR && nc === targetC) {
+          return true;
+        }
+
+        if (board[nr][nc]) {
+          break;
+        }
+
+        nr += dr;
+        nc += dc;
+      }
+    }
+
+    return false;
+  }
+
+  function pieceAttacksSquare(
+    state,
+    r,
+    c,
+    targetR,
+    targetC
+  ) {
+    const board = state.board;
+    const piece = board[r][c];
+
+    if (!piece) return false;
+
+    const dr = targetR - r;
+    const dc = targetC - c;
+
+    if (piece.type === "p" && !piece.secret) {
+      const direction = piece.color === "w" ? -1 : 1;
+
+      return (
+        dr === direction &&
+        Math.abs(dc) === 1
+      );
+    }
+
+    const type = piece.secret ? "q" : piece.type;
+
+    if (type === "n") {
+      return KNIGHT_STEPS.some(
+        ([a, b]) => a === dr && b === dc
+      );
+    }
+
+    if (type === "k") {
+      return Math.max(
+        Math.abs(dr),
+        Math.abs(dc)
+      ) === 1;
+    }
+
+    if (type === "r") {
+      return slidingAttacks(
+        board,
+        r,
+        c,
+        ROOK_DIRECTIONS,
+        targetR,
+        targetC
+      );
+    }
+
+    if (type === "b") {
+      return slidingAttacks(
+        board,
+        r,
+        c,
+        BISHOP_DIRECTIONS,
+        targetR,
+        targetC
+      );
+    }
+
+    if (type === "q") {
+      return slidingAttacks(
+        board,
+        r,
+        c,
+        QUEEN_DIRECTIONS,
+        targetR,
+        targetC
+      );
+    }
+
+    return false;
+  }
+
+  function isAttacked(state, r, c, byColor) {
+    const board = state.board;
+
+    for (let sr = 0; sr < board.length; sr++) {
+      for (let sc = 0; sc < board.length; sc++) {
+        const piece = board[sr][sc];
+
+        if (!piece || piece.color !== byColor) {
+          continue;
+        }
+
+        if (
+          pieceAttacksSquare(
+            state,
+            sr,
+            sc,
+            r,
+            c
+          )
+        ) {
+          return true;
+        }
+      }
+    }
+
+    return false;
+  }
+
+  function isInCheck(state, color) {
+    const king = findKing(state.board, color);
+
+    if (!king) {
+      return false;
+    }
+
+    return isAttacked(
+      state,
+      king.r,
+      king.c,
+      other(color)
+    );
+  }
+
+  /* ==========================================================
+     8. MOVE GENERATION
+     ========================================================== */
+
+  function createMove(fr, fc, tr, tc, extra = {}) {
+    return {
+      fr,
+      fc,
+      tr,
+      tc,
+      ...extra
+    };
+  }
+
+  function slidingMoves(
+    state,
+    r,
+    c,
+    directions
+  ) {
+    const board = state.board;
+    const piece = board[r][c];
+
+    const moves = [];
+
+    for (const [dr, dc] of directions) {
+      let nr = r + dr;
+      let nc = c + dc;
+
+      while (inside(board, nr, nc)) {
+        const target = board[nr][nc];
+
+        if (isFriendly(target, piece.color)) {
+          break;
+        }
+
+        if (!target || target.type !== "k") {
+          moves.push(createMove(r, c, nr, nc));
+        }
+
+        if (target) {
+          break;
+        }
+
+        nr += dr;
+        nc += dc;
+      }
+    }
+
+    return moves;
+  }
+
+  function jumpingMoves(
+    state,
+    r,
+    c,
+    steps
+  ) {
+    const board = state.board;
+    const piece = board[r][c];
+
+    const moves = [];
+
+    for (const [dr, dc] of steps) {
+      const nr = r + dr;
+      const nc = c + dc;
+
+      if (!inside(board, nr, nc)) continue;
+
+      const target = board[nr][nc];
+
+      if (
+        !isFriendly(target, piece.color) &&
+        (!target || target.type !== "k")
+      ) {
+        moves.push(createMove(r, c, nr, nc));
+      }
+    }
+
+    return moves;
+  }
+
+  function pawnMoves(state, r, c) {
+    const board = state.board;
+    const piece = board[r][c];
+
+    const moves = [];
+
+    const direction = piece.color === "w" ? -1 : 1;
+    const startRow =
+      piece.color === "w" ? board.length - 2 : 1;
+
+    const nr = r + direction;
+
+    if (
+      inside(board, nr, c) &&
+      !board[nr][c]
+    ) {
+      moves.push(createMove(r, c, nr, c));
+
+      const doubleRow = r + direction * 2;
+
+      if (
+        r === startRow &&
+        !piece.moved &&
+        inside(board, doubleRow, c) &&
+        !board[doubleRow][c]
+      ) {
+        moves.push(
+          createMove(r, c, doubleRow, c, {
+            doublePawn: true
+          })
+        );
+      }
+    }
+
+    for (const dc of [-1, 1]) {
+      const nc = c + dc;
+
+      if (!inside(board, nr, nc)) continue;
+
+      const target = board[nr][nc];
+
+      if (
+        isEnemy(target, piece.color) &&
+        target.type !== "k"
+      ) {
+        moves.push(createMove(r, c, nr, nc));
+      }
+
+      const ep = state.enPassant;
+
+      if (
+        ep &&
+        ep.r === nr &&
+        ep.c === nc &&
+        ep.color !== piece.color &&
+        board[r][nc] &&
+        board[r][nc].type === "p" &&
+        board[r][nc].color !== piece.color
+      ) {
+        moves.push(
+          createMove(r, c, nr, nc, {
+            enPassant: true
+          })
+        );
+      }
+    }
+
+    return moves;
+  }
+
+  /* ==========================================================
+     9. CASTLING
+     ========================================================== */
+
+  function castlingMoves(state, r, c) {
+    const board = state.board;
+    const king = board[r][c];
+
+    if (
+      !king ||
+      king.type !== "k" ||
+      king.moved ||
+      state.mode === "kingrace" ||
+      state.mode === "atomic"
+    ) {
+      return [];
+    }
+
+    if (isInCheck(state, king.color)) {
+      return [];
+    }
+
+    const moves = [];
+
+    for (const rookCol of [0, board.length - 1]) {
+      const rook = board[r][rookCol];
+
+      if (
+        !rook ||
+        rook.type !== "r" ||
+        rook.color !== king.color ||
+        rook.moved
+      ) {
+        continue;
+      }
+
+      const direction = rookCol > c ? 1 : -1;
+
+      const destination = c + direction * 2;
+
+      if (
+        !inside(board, r, destination)
+      ) {
+        continue;
+      }
+
+      let clear = true;
+
+      for (
+        let col = c + direction;
+        col !== rookCol;
+        col += direction
+      ) {
+        if (board[r][col]) {
+          clear = false;
+          break;
+        }
+      }
+
+      if (!clear) continue;
+
+      if (
+        isAttacked(
+          state,
+          r,
+          c + direction,
+          other(king.color)
+        ) ||
+        isAttacked(
+          state,
+          r,
+          destination,
+          other(king.color)
+        )
+      ) {
+        continue;
+      }
+
+      moves.push(
+        createMove(r, c, r, destination, {
+          castle: true,
+          rookFrom: rookCol,
+          rookTo: c + direction
+        })
+      );
+    }
+
+    return moves;
+  }
+
+  /* ==========================================================
+     10. PSEUDO-LEGAL MOVES
+     ========================================================== */
+
+  function pseudoMoves(state, r, c) {
+    const board = state.board;
+    const piece = board[r]?.[c];
+
+    if (!piece) return [];
+
+    if (piece.secret) {
+      return slidingMoves(
+        state,
+        r,
+        c,
+        QUEEN_DIRECTIONS
+      );
+    }
+
+    switch (piece.type) {
+      case "p":
+        return pawnMoves(state, r, c);
+
+      case "n":
+        return jumpingMoves(
+          state,
+          r,
+          c,
+          KNIGHT_STEPS
+        );
+
+      case "b":
+        return slidingMoves(
+          state,
+          r,
+          c,
+          BISHOP_DIRECTIONS
+        );
+
+      case "r":
+        return slidingMoves(
+          state,
+          r,
+          c,
+          ROOK_DIRECTIONS
+        );
+
+      case "q":
+        return slidingMoves(
+          state,
+          r,
+          c,
+          QUEEN_DIRECTIONS
+        );
+
+      case "k":
+        return [
+          ...jumpingMoves(
+            state,
+            r,
+            c,
+            KING_STEPS
+          ),
+          ...castlingMoves(state, r, c)
+        ];
+
+      default:
+        return [];
+    }
+  }
+
+  /* ==========================================================
+     11. SIMULATING MOVES
+     ========================================================== */
+
+  function applyMove(state, move, simulation = false) {
+    const next = cloneGame(state);
+    const board = next.board;
+
+    const piece = board[move.fr][move.fc];
+
+    if (!piece) return next;
+
+    const target = board[move.tr][move.tc];
+
+    let captured = target;
+
+    board[move.fr][move.fc] = null;
+
+    if (move.enPassant) {
+      captured = board[move.fr][move.tc];
+      board[move.fr][move.tc] = null;
+    }
+
+    const moving = {
+      ...piece,
+      moved: true
+    };
+
+    board[move.tr][move.tc] = moving;
+
+    if (move.castle) {
+      const rook = board[move.fr][move.rookFrom];
+
+      board[move.fr][move.rookFrom] = null;
+
+      board[move.fr][move.rookTo] = {
+        ...rook,
+        moved: true
+      };
+    }
+
+    // Atomic variant:
+    // A capture destroys the capturing piece and nearby
+    // non-pawn pieces. Kings may not be captured directly.
+
+    if (
+      state.mode === "atomic" &&
+      captured
+    ) {
+      for (let dr = -1; dr <= 1; dr++) {
+        for (let dc = -1; dc <= 1; dc++) {
+          const nr = move.tr + dr;
+          const nc = move.tc + dc;
+
+          if (!inside(board, nr, nc)) continue;
+
+          const nearby = board[nr][nc];
+
+          if (!nearby) continue;
+
+          const center = dr === 0 && dc === 0;
+
+          if (center || nearby.type !== "p") {
+            board[nr][nc] = null;
+          }
+        }
+      }
+    }
+
+    // Standard promotion to a queen by default.
+    // The UI can later expose underpromotion choices.
+
+    if (
+      board[move.tr][move.tc] &&
+      board[move.tr][move.tc].type === "p" &&
+      !board[move.tr][move.tc].secret &&
+      (
+        move.tr === 0 ||
+        move.tr === board.length - 1
+      )
+    ) {
+      board[move.tr][move.tc].type =
+        move.promotion || "q";
+    }
+
+    next.enPassant = null;
+
+    if (
+      piece.type === "p" &&
+      Math.abs(move.tr - move.fr) === 2
+    ) {
+      next.enPassant = {
+        r: (move.tr + move.fr) / 2,
+        c: move.fc,
+        color: piece.color
+      };
+    }
+
+    if (!simulation) {
+      if (captured) {
+        next.captured[piece.color].push(
+          captured.type
+        );
+      }
+
+      next.lastMove = { ...move };
+
+      next.halfmove =
+        captured || piece.type === "p"
+          ? 0
+          : state.halfmove + 1;
+
+      if (piece.color === "b") {
+        next.fullmove++;
+      }
+    }
+
+    next.turn = other(piece.color);
+
+    return next;
+  }
+
+  /* ==========================================================
+     12. LEGAL MOVE FILTER
+     ========================================================== */
+
+  function legalMovesFor(state, r, c) {
+    const piece = state.board[r]?.[c];
+
+    if (!piece) return [];
+
+    if (piece.color !== state.turn) {
+      return [];
+    }
+
+    const pseudo = pseudoMoves(state, r, c);
+
+    return pseudo.filter(move => {
+      const simulated = applyMove(
+        state,
+        move,
+        true
+      );
+
+      if (state.mode === "horde" && piece.color === "w") {
+        return true;
+      }
+
+      if (state.mode === "kingrace") {
+        // In this variant kings still cannot move
+        // onto squares controlled by the opponent.
+        return !isInCheck(simulated, piece.color);
+      }
+
+      if (state.mode === "atomic") {
+        const king = findKing(
+          simulated.board,
+          piece.color
+        );
+
+        if (!king) return false;
+
+        return !isInCheck(
+          simulated,
+          piece.color
+        );
+      }
+
+      return !isInCheck(
+        simulated,
+        piece.color
+      );
+    });
+  }
+
+  function allLegalMoves(state, color = state.turn) {
+    const copy = {
+      ...state,
+      turn: color
+    };
+
+    const moves = [];
+
+    for (let r = 0; r < copy.board.length; r++) {
+      for (let c = 0; c < copy.board.length; c++) {
+        const piece = copy.board[r][c];
+
+        if (
+          piece &&
+          piece.color === color
+        ) {
+          moves.push(
+            ...legalMovesFor(copy, r, c)
+          );
+        }
+      }
+    }
+
+    return moves;
+  }
+
+  /* ==========================================================
+     13. SPECIAL VICTORY CONDITIONS
+     ========================================================== */
+
+  function countPieces(state, color) {
+    let count = 0;
+
+    for (const row of state.board) {
+      for (const piece of row) {
+        if (
+          piece &&
+          piece.color === color
+        ) {
+          count++;
+        }
+      }
+    }
+
+    return count;
+  }
+
+  function finishGame(state, winner, result) {
+    state.winner = winner;
+    state.result = result;
+    state.status = "finished";
+  }
+
+  function evaluateGame(state) {
+    if (state.status === "finished") {
+      return;
+    }
+
+    if (state.mode === "kingrace") {
+      const whiteKing = findKing(state.board, "w");
+      const blackKing = findKing(state.board, "b");
+
+      if (whiteKing && whiteKing.r === 0) {
+        finishGame(
+          state,
+          "w",
+          "White wins the king race!"
+        );
+        return;
+      }
+
+      if (
+        blackKing &&
+        blackKing.r === state.board.length - 1
+      ) {
+        finishGame(
+          state,
+          "b",
+          "Black wins the king race!"
+        );
+        return;
+      }
+    }
+
+    if (state.mode === "horde") {
+      if (countPieces(state, "w") === 0) {
+        finishGame(
+          state,
+          "b",
+          "Black defeated the pawn horde!"
+        );
+        return;
+      }
+
+      if (countPieces(state, "b") === 0) {
+        finishGame(
+          state,
+          "w",
+          "The pawn horde wins!"
+        );
+        return;
+      }
+    }
+
+    if (state.mode === "atomic") {
+      const whiteKing = findKing(state.board, "w");
+      const blackKing = findKing(state.board, "b");
+
+      if (!whiteKing) {
+        finishGame(
+          state,
+          "b",
+          "Black wins by explosion!"
+        );
+        return;
+      }
+
+      if (!blackKing) {
+        finishGame(
+          state,
+          "w",
+          "White wins by explosion!"
+        );
+        return;
+      }
+    }
+
+    const moves = allLegalMoves(state);
+
+    if (moves.length === 0) {
+      if (isInCheck(state, state.turn)) {
+        finishGame(
+          state,
+          other(state.turn),
+          `${colorName(other(state.turn))} wins by checkmate!`
+        );
+      } else {
+        finishGame(
+          state,
+          null,
+          "Draw by stalemate."
+        );
+      }
+
+      return;
+    }
+
+    if (state.halfmove >= 100) {
+      finishGame(
+        state,
+        null,
+        "Draw by the 50-move rule."
+      );
+    }
+  }
+
+  /* ==========================================================
+     14. HIDDEN QUEEN SETUP
+     ========================================================== */
+
+  function chooseHiddenQueen(r, c) {
+    if (
+      game.mode !== "hidden" ||
+      !game.hiddenSetup
+    ) {
+      return false;
+    }
+
+    const piece = game.board[r][c];
+
+    if (
+      !piece ||
+      piece.type !== "p" ||
+      piece.color !== game.hiddenSetup
+    ) {
+      showToast(
+        `Choose one of ${colorName(game.hiddenSetup)}'s pawns.`,
+        "error"
+      );
+      return true;
+    }
+
+    const color = game.hiddenSetup;
+
+    piece.secret = true;
+
+    game.secrets[color] = { r, c };
+
+    if (color === "w") {
+      game.hiddenSetup = "b";
+
+      showToast(
+        "White's secret queen selected. Pass the device to Black.",
+        "success"
+      );
+    } else {
+      game.hiddenSetup = null;
+
+      showToast(
+        "Both secret queens selected. Game started!",
+        "success"
+      );
+    }
+
+    selected = null;
+    legalTargets = [];
+
+    renderAll();
+
+    return true;
+  }
+
+  /* ==========================================================
+     15. MOVE NOTATION
+     ========================================================== */
+
+  function notationFor(state, move) {
+    const piece = state.board[move.fr][move.fc];
+
+    if (!piece) return "";
+
+    if (move.castle) {
+      return move.tc > move.fc
+        ? "O-O"
+        : "O-O-O";
+    }
+
+    const target = state.board[move.tr][move.tc];
+
+    const capture = target || move.enPassant;
+
+    const letter = piece.type === "p"
+      ? ""
+      : piece.type.toUpperCase();
+
+    const destination = squareName(
+      move.tr,
+      move.tc,
+      state.board.length
+    );
+
+    let notation =
+      letter +
+      (capture ? "x" : "") +
+      destination;
+
+    if (
+      piece.type === "p" &&
+      capture
+    ) {
+      notation =
+        FILES[move.fc] +
+        "x" +
+        destination;
+    }
+
+    if (
+      piece.type === "p" &&
+      (
+        move.tr === 0 ||
+        move.tr === state.board.length - 1
+      )
+    ) {
+      notation += "=Q";
+    }
+
+    return notation;
+  }
+
+  /* ==========================================================
+     16. EXECUTING A MOVE
+     ========================================================== */
+
+  function executeMove(move) {
+    if (
+      !game ||
+      game.status !== "playing" ||
+      game.hiddenSetup
+    ) {
+      return;
+    }
+
+    const previous = cloneGame(game);
+
+    const movingPiece =
+      previous.board[move.fr][move.fc];
+
+    const captured =
+      previous.board[move.tr][move.tc] ||
+      move.enPassant;
+
+    let notation = notationFor(previous, move);
+
+    history.push(previous);
+
+    game = applyMove(
+      game,
+      move,
+      false
+    );
+
+    evaluateGame(game);
+
+    if (
+      game.status !== "finished" &&
+      isInCheck(game, game.turn)
+    ) {
+      notation += "+";
+    }
+
+    if (
+      game.status === "finished" &&
+      game.winner
+    ) {
+      notation += "#";
+    }
+
+    moveHistory.push({
+      notation,
+      color: movingPiece.color,
+      moveNumber: previous.fullmove
+    });
+
+    selected = null;
+    legalTargets = [];
+
+    if (game.status === "finished") {
+      playSound("win");
+
+      showToast(
+        game.result,
+        "success"
+      );
+    } else if (captured) {
+      playSound("capture");
+    } else if (isInCheck(game, game.turn)) {
+      playSound("check");
+    } else {
+      playSound("move");
+    }
+
+    renderAll();
+  }
+
+  /* ==========================================================
+     17. SQUARE INTERACTION
+     ========================================================== */
+
+  function onSquareClick(r, c) {
+    if (!game) return;
+
+    if (game.hiddenSetup) {
+      chooseHiddenQueen(r, c);
+      return;
+    }
+
+    if (game.status === "finished") {
+      return;
+    }
+
+    const piece = game.board[r][c];
+
+    if (selected) {
+      const move = legalTargets.find(
+        candidate =>
+          candidate.tr === r &&
+          candidate.tc === c
+      );
+
+      if (move) {
+        executeMove(move);
+        return;
+      }
+    }
+
+    if (
+      piece &&
+      piece.color === game.turn
+    ) {
+      if (
+        selected &&
+        selected.r === r &&
+        selected.c === c
+      ) {
+        selected = null;
+        legalTargets = [];
+      } else {
+        selected = { r, c };
+
+        legalTargets = legalMovesFor(
+          game,
+          r,
+          c
+        );
+
+        playSound("select");
+      }
+    } else {
+      selected = null;
+      legalTargets = [];
+    }
+
+    renderBoard();
+  }
+
+  /* ==========================================================
+     18. BOARD ORIENTATION
+     ========================================================== */
+
+  function displayedCoordinates(size) {
+    const coordinates = [];
+
+    for (let r = 0; r < size; r++) {
+      for (let c = 0; c < size; c++) {
+        coordinates.push({
+          r: flipped ? size - 1 - r : r,
+          c: flipped ? size - 1 - c : c,
+          displayR: r,
+          displayC: c
+        });
+      }
+    }
+
+    return coordinates;
+  }
+
+  /* ==========================================================
+     19. PIECE RENDERING
+     ========================================================== */
+
+  function pieceSymbol(piece) {
+    if (!piece) return "";
+
+    const style =
+      PIECES[settings.pieceStyle] ||
+      PIECES.classic;
+
+    return style[piece.color][piece.type];
+  }
+
+  function renderBoard() {
+    if (!game) return;
+
+    const element = $("board");
+
+    if (!element) return;
+
+    const board = game.board;
+    const size = board.length;
+
+    element.style.setProperty(
+      "--size",
+      size
+    );
+
+    element.className =
+      "board theme-" + settings.theme;
+
+    if (settings.animation) {
+      element.classList.add("animated");
+    }
+
+    if (game.status === "finished") {
+      element.classList.add("game-over");
+    }
+
+    element.style.setProperty(
+      "--piece-scale",
+      String(settings.pieceSize / 100)
+    );
+
+    const fragment = document.createDocumentFragment();
+
+    const coordinates = displayedCoordinates(size);
+
+    for (const position of coordinates) {
+      const {
+        r,
+        c,
+        displayR,
+        displayC
+      } = position;
+
+      const piece = board[r][c];
+
+      const square = document.createElement("button");
+
+      square.type = "button";
+
+      square.className = "square";
+
+      square.setAttribute(
+        "role",
+        "gridcell"
+      );
+
+      square.setAttribute(
+        "aria-label",
+        `${squareName(r, c, size)} ${
+          piece
+            ? colorName(piece.color) + " " + piece.type
+            : "empty"
+        }`
+      );
+
+      if ((r + c) % 2 === 1) {
+        square.classList.add("dark-square");
+      }
+
+      if (
+        selected &&
+        selected.r === r &&
+        selected.c === c
+      ) {
+        square.classList.add("selected");
+      }
+
+      if (
+        game.lastMove &&
+        (
+          (
+            game.lastMove.fr === r &&
+            game.lastMove.fc === c
+          ) ||
+          (
+            game.lastMove.tr === r &&
+            game.lastMove.tc === c
+          )
+        )
+      ) {
+        square.classList.add("lastmove");
+      }
+
+      const legal = legalTargets.some(
+        move =>
+          move.tr === r &&
+          move.tc === c
+      );
+
+      if (legal && settings.legal) {
+        square.classList.add(
+          piece ? "capture-target" : "legal"
+        );
+      }
+
+      if (
+        piece &&
+        piece.type === "k" &&
+        isInCheck(game, piece.color)
+      ) {
+        square.classList.add("in-check");
+      }
+
+      if (piece) {
+        const span = document.createElement("span");
+
+        span.className =
+          "piece " +
+          (piece.color === "w"
+            ? "white-piece"
+            : "black-piece");
+
+        span.textContent = pieceSymbol(piece);
+
+        square.appendChild(span);
+      }
+
+      if (settings.coords) {
+        if (displayC === 0) {
+          const rank = document.createElement("span");
+
+          rank.className = "coord";
+
+          rank.textContent = size - r;
+
+          square.appendChild(rank);
+        }
+
+        if (displayR === size - 1) {
+          const file = document.createElement("span");
+
+          file.className = "coord file";
+
+          file.textContent = FILES[c];
+
+          square.appendChild(file);
+        }
+      }
+
+      square.addEventListener(
+        "click",
+        () => onSquareClick(r, c)
+      );
+
+      fragment.appendChild(square);
+    }
+
+    element.replaceChildren(fragment);
+  }
+
+  /* ==========================================================
+     20. PLAYER STATUS
+     ========================================================== */
+
+  function renderPlayerStatus() {
+    if (!game) return;
+
+    const white = $("whiteStatus");
+    const black = $("blackStatus");
+
+    if (game.status === "finished") {
+      white.textContent = game.result;
+      black.textContent = game.result;
+      return;
+    }
+
+    white.textContent =
+      game.turn === "w"
+        ? "Your move"
+        : "Waiting";
+
+    black.textContent =
+      game.turn === "b"
+        ? "Your move"
+        : "Waiting";
+
+    if (isInCheck(game, "w")) {
+      white.textContent = "In check!";
+    }
+
+    if (isInCheck(game, "b")) {
+      black.textContent = "In check!";
+    }
+  }
+
+  /* ==========================================================
+     21. CAPTURED PIECES
+     ========================================================== */
+
+  function renderCaptures() {
+    if (!game) return;
+
+    function capturedText(color) {
+      return game.captured[color]
+        .map(type => {
+          const opponent = other(color);
+
+          return PIECES.classic[opponent][type];
+        })
+        .join("");
+    }
+
+    $("whiteCaptures").textContent =
+      capturedText("w");
+
+    $("blackCaptures").textContent =
+      capturedText("b");
+  }
+
+  /* ==========================================================
+     22. TURN INDICATOR
+     ========================================================== */
+
+  function renderTurn() {
+    if (!game) return;
+
+    const turnLabel = $("turnLabel");
+
+    if (game.status === "finished") {
+      turnLabel.textContent =
+        game.winner
+          ? `${colorName(game.winner)} wins`
+          : "Draw";
+
+      return;
+    }
+
+    turnLabel.textContent =
+      game.turn === "w"
+        ? "♔ White"
+        : "♚ Black";
+  }
+
+  /* ==========================================================
+     23. HIDDEN QUEEN NOTICE
+     ========================================================== */
+
+  function renderSecretNotice() {
+    const notice = $("secretNotice");
+
+    if (!notice) return;
+
+    if (game.mode !== "hidden") {
+      notice.classList.add("hidden");
+      return;
+    }
+
+    notice.classList.remove("hidden");
+
+    if (game.hiddenSetup) {
+      notice.textContent =
+        `SECRET SETUP: ${colorName(game.hiddenSetup)} ` +
+        "must select a pawn to become a hidden queen.";
+    } else {
+      notice.textContent =
+        "Hidden Queen active. Secret queens look like pawns.";
+    }
+  }
+
+  /* ==========================================================
+     24. MOVE HISTORY
+     ========================================================== */
+
+  function renderHistory() {
+    const element = $("history");
+
+    if (!element) return;
+
+    element.replaceChildren();
+
+    if (moveHistory.length === 0) {
+      const empty = document.createElement("div");
+
+      empty.className = "empty-history";
+
+      empty.textContent =
+        "Your story begins with the first move.";
+
+      element.appendChild(empty);
+
+      return;
+    }
+
+    const rows = new Map();
+
+    for (const move of moveHistory) {
+      if (!rows.has(move.moveNumber)) {
+        rows.set(move.moveNumber, {
+          white: "",
+          black: ""
+        });
+      }
+
+      const row = rows.get(move.moveNumber);
+
+      if (move.color === "w") {
+        row.white = move.notation;
+      } else {
+        row.black = move.notation;
+      }
+    }
+
+    for (const [number, moves] of rows) {
+      const row = document.createElement("div");
+
+      row.className = "move-row";
+
+      const numberSpan = document.createElement("span");
+      const whiteSpan = document.createElement("span");
+      const blackSpan = document.createElement("span");
+
+      numberSpan.textContent = number + ".";
+      whiteSpan.textContent = moves.white;
+      blackSpan.textContent = moves.black;
+
+      row.append(
+        numberSpan,
+        whiteSpan,
+        blackSpan
+      );
+
+      element.appendChild(row);
+    }
+
+    element.scrollTop = element.scrollHeight;
+  }
+
+  /* ==========================================================
+     25. COMPLETE GAME RENDER
+     ========================================================== */
+
+  function renderAll() {
+    renderBoard();
+    renderPlayerStatus();
+    renderCaptures();
+    renderTurn();
+    renderSecretNotice();
+    renderHistory();
+  }
+
+  /* ==========================================================
+     26. UNDO
+     ========================================================== */
+
+  function undoMove() {
+    if (history.length === 0) {
+      showToast(
+        "No moves to undo.",
+        "error"
+      );
+      return;
+    }
+
+    game = history.pop();
+
+    moveHistory.pop();
+
+    selected = null;
+    legalTargets = [];
+
+    renderAll();
+
+    playSound("undo");
+  }
+
+  /* ==========================================================
+     27. SOUND ENGINE
+     ========================================================== */
+
+  function getAudioContext() {
+    if (!settings.sound) return null;
+
+    try {
+      if (!audioContext) {
+        const Context =
+          window.AudioContext ||
+          window.webkitAudioContext;
+
+        if (!Context) return null;
+
+        audioContext = new Context();
+      }
+
+      if (audioContext.state === "suspended") {
+        audioContext.resume().catch(() => {});
+      }
+
+      return audioContext;
+    } catch {
+      return null;
+    }
+  }
+
+  function tone(
+    frequency,
+    duration,
+    type = "sine",
+    volume = 0.06,
+    delay = 0
+  ) {
+    const context = getAudioContext();
+
+    if (!context) return;
+
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+
+    const now = context.currentTime + delay;
+
+    oscillator.type = type;
+
+    oscillator.frequency.setValueAtTime(
+      frequency,
+      now
+    );
+
+    gain.gain.setValueAtTime(
+      0.0001,
+      now
+    );
+
+    gain.gain.exponentialRampToValueAtTime(
+      Math.max(volume, 0.0002),
+      now + 0.008
+    );
+
+    gain.gain.exponentialRampToValueAtTime(
+      0.0001,
+      now + duration
+    );
+
+    oscillator.connect(gain);
+    gain.connect(context.destination);
+
+    oscillator.start(now);
+    oscillator.stop(now + duration + 0.02);
+  }
+
+  function playSound(name) {
+    if (!settings.sound) return;
+
+    switch (name) {
+      case "select":
+        tone(540, 0.045, "sine", 0.018);
+        break;
+
+      case "move":
+        tone(340, 0.08, "triangle", 0.045);
+        tone(440, 0.07, "sine", 0.02, 0.025);
+        break;
+
+      case "capture":
+        tone(180, 0.15, "sawtooth", 0.035);
+        tone(110, 0.12, "triangle", 0.04, 0.025);
+        break;
+
+      case "check":
+        tone(650, 0.12, "square", 0.025);
+        tone(780, 0.12, "sine", 0.04, 0.1);
+        break;
+
+      case "win":
+        tone(440, 0.18, "sine", 0.05);
+        tone(550, 0.18, "sine", 0.05, 0.15);
+        tone(660, 0.25, "sine", 0.05, 0.3);
+        break;
+
+      case "undo":
+        tone(400, 0.07, "triangle", 0.03);
+        tone(300, 0.09, "triangle", 0.03, 0.05);
+        break;
+
+      case "start":
+        tone(400, 0.09, "sine", 0.03);
+        tone(600, 0.13, "sine", 0.04, 0.09);
+        break;
+    }
+  }
+
+  /* ==========================================================
+     28. TOAST NOTIFICATIONS
+     ========================================================== */
+
+  function showToast(message, type = "normal") {
+    let container = document.querySelector(
+      ".toast-container"
+    );
+
+    if (!container) {
+      container = document.createElement("div");
+
+      container.className = "toast-container";
+
+      document.body.appendChild(container);
+    }
+
+    const toast = document.createElement("div");
+
+    toast.className = "toast";
+
+    if (type === "success" || type === "error") {
+      toast.classList.add(type);
+    }
+
+    toast.textContent = message;
+
+    container.appendChild(toast);
+
+    setTimeout(() => {
+      toast.remove();
+
+      if (!container.children.length) {
+        container.remove();
+      }
+    }, 3200);
+  }
+
+  /* ==========================================================
+     29. NAVIGATION
+     ========================================================== */
+
+  const PAGE_CONTENT = {
+    play: {
+      title: "Make your next move",
+      emphasis: "legendary.",
+      subtitle:
+        "Classic strategy. Unpredictable rules. Endless rematches."
+    },
+    modes: {
+      title: "Choose your",
+      emphasis: "chaos.",
+      subtitle:
+        "Explore experimental chess variants and unexpected rules."
+    },
+    settings: {
+      title: "Make it",
+      emphasis: "yours.",
+      subtitle:
+        "Customize your chessboard, pieces, sounds and controls."
+    }
+  };
+
+  function showView(name) {
+    const views = {
+      play: $("playView"),
+      modes: $("modesView"),
+      settings: $("settingsView")
+    };
+
+    for (const [key, element] of Object.entries(views)) {
+      if (!element) continue;
+
+      element.classList.toggle(
+        "hidden",
+        key !== name
+      );
+    }
+
+    document.querySelectorAll(".nav").forEach(button => {
+      button.classList.toggle(
+        "active",
+        button.dataset.view === name
+      );
+    });
+
+    const page = PAGE_CONTENT[name];
+
+    if (page) {
+      const title = $("pageTitle");
+
+      title.replaceChildren();
+
+      title.append(
+        document.createTextNode(page.title + " ")
+      );
+
+      const emphasis = document.createElement("em");
+
+      emphasis.textContent = page.emphasis;
+
+      title.appendChild(emphasis);
+
+      $("pageSubtitle").textContent = page.subtitle;
+    }
+  }
+
+  /* ==========================================================
+     30. GAME MODE CARDS
+     ========================================================== */
+
+  function renderModeCards() {
+    const grid = $("modeGrid");
+
+    if (!grid) return;
+
+    grid.replaceChildren();
+
+    $("modeCount").textContent =
+      `${MODES.length} MODES AVAILABLE`;
+
+    for (const mode of MODES) {
+      const card = document.createElement("article");
+
+      card.className = "mode-card";
+
+      const icon = document.createElement("div");
+      icon.className = "mode-emoji";
+      icon.textContent = mode.icon;
+
+      const tag = document.createElement("div");
+      tag.className = "mode-tag";
+      tag.textContent = mode.tag;
+
+      const title = document.createElement("h3");
+      title.textContent = mode.name;
+
+      const description = document.createElement("p");
+      description.textContent = mode.description;
+
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = "Play this mode";
+
+      button.addEventListener("click", () => {
+        newGame(mode.id);
+
+        showToast(
+          `${mode.name} started!`,
+          "success"
+        );
+      });
+
+      card.append(
+        icon,
+        title,
+        description,
+        tag,
+        button
+      );
+
+      grid.appendChild(card);
+    }
+  }
+
+  /* ==========================================================
+     31. BOARD THEME CONTROLS
+     ========================================================== */
+
+  function renderThemeChoices() {
+    const container = $("themeChoices");
+
+    if (!container) return;
+
+    container.replaceChildren();
+
+    for (const theme of THEMES) {
+      const button = document.createElement("button");
+
+      button.type = "button";
+
+      button.className = "theme-choice";
+
+      button.title = theme.name;
+
+      button.setAttribute(
+        "aria-label",
+        theme.name + " board theme"
+      );
+
+      button.setAttribute(
+        "aria-pressed",
+        settings.theme === theme.id
+          ? "true"
+          : "false"
+      );
+
+      button.style.setProperty(
+        "--l",
+        theme.light
+      );
+
+      button.style.setProperty(
+        "--d",
+        theme.dark
+      );
+
+      if (settings.theme === theme.id) {
+        button.classList.add("active");
+      }
+
+      button.addEventListener("click", () => {
+        settings.theme = theme.id;
+
+        saveSettings();
+
+        renderThemeChoices();
+        renderBoard();
+
+        playSound("select");
+      });
+
+      container.appendChild(button);
+    }
+  }
+
+  /* ==========================================================
+     32. SETTINGS BINDING
+     ========================================================== */
+
+  function bindSettings() {
+    const pieceStyle = $("pieceStyle");
+    const orientation = $("orientation");
+    const sound = $("soundToggle");
+    const legal = $("legalToggle");
+    const coords = $("coordsToggle");
+    const animation = $("animationToggle");
+    const pieceSize = $("pieceSize");
+
+    pieceStyle.value = settings.pieceStyle;
+    orientation.value = settings.orientation;
+
+    sound.checked = settings.sound;
+    legal.checked = settings.legal;
+    coords.checked = settings.coords;
+    animation.checked = settings.animation;
+
+    pieceSize.value = settings.pieceSize;
+
+    pieceStyle.addEventListener("change", event => {
+      settings.pieceStyle = event.target.value;
+
+      saveSettings();
+      renderBoard();
+    });
+
+    orientation.addEventListener("change", event => {
+      settings.orientation = event.target.value;
+
+      flipped = settings.orientation === "black";
+
+      saveSettings();
+      renderBoard();
+    });
+
+    sound.addEventListener("change", event => {
+      settings.sound = event.target.checked;
+
+      saveSettings();
+
+      if (settings.sound) {
+        playSound("select");
+      }
+    });
+
+    legal.addEventListener("change", event => {
+      settings.legal = event.target.checked;
+
+      saveSettings();
+      renderBoard();
+    });
+
+    coords.addEventListener("change", event => {
+      settings.coords = event.target.checked;
+
+      saveSettings();
+      renderBoard();
+    });
+
+    animation.addEventListener("change", event => {
+      settings.animation = event.target.checked;
+
+      saveSettings();
+      renderBoard();
+    });
+
+    pieceSize.addEventListener("input", event => {
+      settings.pieceSize = Number(event.target.value);
+
+      saveSettings();
+      renderBoard();
+    });
+
+    $("resetSettings").addEventListener("click", () => {
+      settings = { ...DEFAULT_SETTINGS };
+
+      saveSettings();
+
+      flipped = false;
+
+      pieceStyle.value = settings.pieceStyle;
+      orientation.value = settings.orientation;
+
+      sound.checked = settings.sound;
+      legal.checked = settings.legal;
+      coords.checked = settings.coords;
+      animation.checked = settings.animation;
+
+      pieceSize.value = settings.pieceSize;
+
+      renderThemeChoices();
+      renderBoard();
+
+      showToast(
+        "Settings reset to defaults.",
+        "success"
+      );
+    });
+  }
+
+  /* ==========================================================
+     33. KEYBOARD SHORTCUTS
+     ========================================================== */
+
+  function bindKeyboard() {
+    document.addEventListener("keydown", event => {
+      const target = event.target;
+
+      if (
+        target instanceof HTMLElement &&
+        (
+          target.tagName === "INPUT" ||
+          target.tagName === "SELECT" ||
+          target.tagName === "TEXTAREA"
+        )
+      ) {
+        return;
+      }
+
+      if (
+        event.key === "Escape" &&
+        selected
+      ) {
+        selected = null;
+        legalTargets = [];
+
+        renderBoard();
+      }
+
+      if (
+        event.ctrlKey &&
+        event.key.toLowerCase() === "z"
+      ) {
+        event.preventDefault();
+
+        undoMove();
+      }
+    });
+  }
+
+  /* ==========================================================
+     34. BUTTON EVENTS
+     ========================================================== */
+
+  function bindButtons() {
+    $("newGame").addEventListener("click", () => {
+      newGame(currentMode);
+    });
+
+    $("undoBtn").addEventListener("click", () => {
+      undoMove();
+    });
+
+    $("flipBtn").addEventListener("click", () => {
+      flipped = !flipped;
+
+      renderBoard();
+
+      playSound("select");
+    });
+
+    document.querySelectorAll(".nav").forEach(button => {
+      button.addEventListener("click", () => {
+        showView(button.dataset.view);
+
+        playSound("select");
+      });
+    });
+  }
+
+  /* ==========================================================
+     35. INITIALIZATION
+     ========================================================== */
+
+  function initialize() {
+    renderModeCards();
+    renderThemeChoices();
+
+    bindSettings();
+    bindButtons();
+    bindKeyboard();
+
+    newGame("classic");
+
+    console.info(
+      "TwistChess initialized successfully."
+    );
+
+    console.info(
+      `${MODES.length} game modes registered.`
+    );
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener(
+      "DOMContentLoaded",
+      initialize,
+      { once: true }
+    );
+  } else {
+    initialize();
+  }
+
+})();
