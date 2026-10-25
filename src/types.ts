@@ -10,7 +10,6 @@ export type ModeName =
   | "chaos"
   | "nocastle"
   | "daily";
-
 export type BoardSize = "small" | "normal" | "large";
 export type IconPack = "classic" | "minimal" | "neon";
 
@@ -34,10 +33,12 @@ export interface RecentGame {
   score: string;
 }
 
-export interface BoardSquare {
-  square: string;
-  row: number;
-  col: number;
-  piece: any;
-  isLight: boolean;
+export interface DailyPuzzle {
+  id: string;
+  title: string;
+  description: string;
+  difficulty: "Easy" | "Medium" | "Hard" | "Expert";
+  theme: string;
+  solution: string;
+  pattern: "Mate in 2" | "Tactics" | "Attack" | "Defense" | "Endgame";
 }
