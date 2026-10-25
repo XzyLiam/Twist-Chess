@@ -1,25 +1,11 @@
 import { Chess, Square } from "chess.js";
-import { BoardSize, ModeName } from "../types";
+import type { BoardSize, ModeName } from "../types";
 
 const FILES = ["a", "b", "c", "d", "e", "f", "g", "h"];
 
 const PIECE_SYMBOLS: Record<string, Record<string, string>> = {
-  w: {
-    p: "♙",
-    r: "♖",
-    n: "♘",
-    b: "♗",
-    q: "♕",
-    k: "♔"
-  },
-  b: {
-    p: "♟",
-    r: "♜",
-    n: "♞",
-    b: "♝",
-    q: "♛",
-    k: "♚"
-  }
+  w: { p: "♙", r: "♖", n: "♘", b: "♗", q: "♕", k: "♔" },
+  b: { p: "♟", r: "♜", n: "♞", b: "♝", q: "♛", k: "♚" }
 };
 
 function getSquareName(row: number, col: number): Square {
@@ -84,13 +70,13 @@ export default function Chessboard({
         </div>
 
         <div className="panel-controls">
-          <button className="mini-btn" onClick={() => onBoardSizeSet("small")} type="button">
+          <button className="mini-btn" type="button" onClick={() => onBoardSizeSet("small")}>
             <i className="fa-solid fa-compress"></i>
           </button>
-          <button className="mini-btn" onClick={() => onBoardSizeSet("large")} type="button">
+          <button className="mini-btn" type="button" onClick={() => onBoardSizeSet("large")}>
             <i className="fa-solid fa-expand"></i>
           </button>
-          <button className="mini-btn" onClick={onFlipBoard} type="button">
+          <button className="mini-btn" type="button" onClick={onFlipBoard}>
             <i className="fa-solid fa-rotate"></i>
           </button>
         </div>
