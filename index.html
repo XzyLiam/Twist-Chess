@@ -3,216 +3,227 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Twist Chess Pro</title>
+    <title>Twist Chess - Play Chess Online & Offline</title>
     <link rel="stylesheet" href="style.css">
+    <!-- Google Fonts for typography -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 </head>
 <body class="theme-wood">
 
-    <!-- Top Navigation Header -->
-    <header class="app-header">
-        <div class="logo-container">
-            <span class="logo-icon">♟️</span>
-            <h1>TWIST CHESS</h1>
-        </div>
-        <div class="header-controls">
-            <button class="nav-menu-btn" onclick="toggleMenuModal()">
-                <span>☰</span> Menu
-            </button>
-        </div>
-    </header>
-
-    <!-- Main Application Grid -->
-    <main class="app-container">
-        <!-- Board Wrapper Panel -->
-        <section class="board-wrapper">
-            <!-- Black Player Info -->
-            <div class="player-info" id="player-black">
-                <div class="player-details">
-                    <div class="avatar">B</div>
-                    <div>
-                        <div id="black-name">Black Player</div>
-                        <div class="captured-pieces" id="captured-black"></div>
-                    </div>
-                </div>
-                <div class="timer" id="timer-black">10:00</div>
+    <!-- Landing / Main Hub Screen Overlay -->
+    <div class="landing-screen" id="landingScreen">
+        <div class="landing-card">
+            <div class="landing-logo">
+                <span class="logo-icon">♟️</span>
+                <h1>Twist Chess</h1>
             </div>
-
-            <!-- Chess Board -->
-            <div class="chessboard" id="chessboard">
-                <div class="game-over-banner" id="gameOverBanner">
-                    <h2 id="winnerTitle">Checkmate!</h2>
-                    <p id="winnerSubtitle">White wins by checkmate.</p>
-                    <button class="btn btn-primary" onclick="resetGame()">Play Again</button>
-                </div>
-            </div>
-
-            <!-- White Player Info -->
-            <div class="player-info active-turn" id="player-white">
-                <div class="player-details">
-                    <div class="avatar">W</div>
-                    <div>
-                        <div id="white-name">White Player</div>
-                        <div class="captured-pieces" id="captured-white"></div>
-                    </div>
-                </div>
-                <div class="timer" id="timer-white">10:00</div>
-            </div>
-        </section>
-
-        <!-- Right Side Panel: Live Notation & Quick Tools -->
-        <aside class="sidebar">
-            <div class="sidebar-header">
-                <h3>Live Move Ledger</h3>
-                <span class="badge" id="moveCountBadge">0 moves</span>
-            </div>
+            <p class="landing-subtitle">The ultimate professional strategy platform. Play vs Computer, local pass & play, or customize your experience.</p>
             
-            <div class="moves-scroll-container">
-                <table class="moves-table">
-                    <thead>
-                        <tr>
-                            <th>#</th>
-                            <th>White</th>
-                            <th>Black</th>
-                        </tr>
-                    </thead>
-                    <tbody id="movesListBody">
-                    </tbody>
-                </table>
-            </div>
+            <div class="landing-options">
+                <div class="option-group">
+                    <label>Select Game Mode</label>
+                    <select id="homeGameMode" onchange="syncHomeSettings()">
+                        <option value="ai">Play vs Computer (Bot)</option>
+                        <option value="pvp">Local 2-Player (Pass & Play)</option>
+                    </select>
+                </div>
 
-            <div class="controls-group">
-                <button class="btn btn-secondary" onclick="undoMove()" title="Undo last move">↩ Undo</button>
-                <button class="btn btn-primary" onclick="flipBoard()" title="Flip board orientation">🔄 Flip</button>
-                <button class="btn btn-danger" onclick="resetGame()" title="Start a fresh game">New Game</button>
-            </div>
-        </aside>
-    </main>
-
-    <!-- Multi-Tab Menu Modal -->
-    <div class="modal-overlay" id="menuModal">
-        <div class="menu-modal-container">
-            <div class="menu-modal-header">
-                <h2>Twist Chess Hub</h2>
-                <button class="close-btn" onclick="toggleMenuModal()">✕</button>
-            </div>
-            
-            <div class="menu-tabs-header">
-                <button class="menu-tab-btn active" onclick="switchMenuTab('customization')">🎨 Customization</button>
-                <button class="menu-tab-btn" onclick="switchMenuTab('engine')">🤖 AI & Difficulty</button>
-                <button class="menu-tab-btn" onclick="switchMenuTab('stats')">📊 Game Stats</button>
-                <button class="menu-tab-btn" onclick="switchMenuTab('help')">📖 Rules & Help</button>
-            </div>
-
-            <div class="menu-tabs-body">
-                <!-- Customization Tab -->
-                <div class="menu-tab-pane active" id="pane-customization">
-                    <div class="setting-item">
-                        <label>Board Theme</label>
-                        <select id="boardThemeSelect" onchange="changeBoardTheme(this.value)">
-                            <option value="theme-wood">Classic Wood</option>
-                            <option value="theme-blue">Ocean Blue</option>
-                            <option value="theme-midnight">Midnight Dark</option>
-                            <option value="theme-emerald">Emerald Forest</option>
-                            <option value="theme-sunset">Sunset Orange</option>
-                            <option value="theme-cyberpunk">Cyberpunk Neon</option>
-                        </select>
-                    </div>
-
-                    <div class="setting-item">
-                        <label>Piece Icon Style</label>
-                        <select id="pieceSetSelect" onchange="changePieceSet(this.value)">
-                            <option value="standard">Standard Unicode (Classic)</option>
-                            <option value="bold">Heavy & Bold Glyphs</option>
-                            <option value="minimal">Minimalist Clean</option>
-                            <option value="medieval">Medieval Fantasy</option>
-                        </select>
-                    </div>
-
-                    <div class="setting-item">
-                        <label class="toggle-switch">
-                            <span>Sound Effects</span>
-                            <input type="checkbox" id="soundToggle" checked>
-                        </label>
-                    </div>
-
-                    <div class="setting-item">
-                        <label class="toggle-switch">
-                            <span>Highlight Legal Moves</span>
-                            <input type="checkbox" id="highlightToggle" checked>
-                        </label>
+                <div class="option-group" id="homeEloGroup">
+                    <label>Bot Difficulty (Elo Rating)</label>
+                    <div class="slider-row">
+                        <input type="range" id="homeEloSlider" min="100" max="3200" step="50" value="1500" oninput="syncHomeElo(this.value)">
+                        <span id="homeEloDisplay">1500 Elo</span>
                     </div>
                 </div>
 
-                <!-- AI & Difficulty Tab -->
-                <div class="menu-tab-pane" id="pane-engine">
-                    <div class="setting-item">
-                        <label>Game Mode</label>
-                        <select id="gameModeSelect" onchange="changeGameMode(this.value)">
-                            <option value="pvp">Local 2-Player (Pass & Play)</option>
-                            <option value="ai" selected>Play vs Computer (Bot)</option>
-                        </select>
-                    </div>
+                <div class="option-group">
+                    <label>Time Control</label>
+                    <select id="homeTimeControl" onchange="syncHomeSettings()">
+                        <option value="0">Unlimited Time</option>
+                        <option value="180">3 Minutes (Blitz)</option>
+                        <option value="300">5 Minutes (Blitz)</option>
+                        <option value="600" selected>10 Minutes (Rapid)</option>
+                        <option value="900">15 Minutes (Rapid)</option>
+                    </select>
+                </div>
+            </div>
 
-                    <div class="setting-item" id="eloContainer">
-                        <div class="elo-header-row">
-                            <label>Computer Elo Rating</label>
-                            <span id="eloValueDisplay" class="elo-badge">1500 ELO</span>
+            <button class="btn-play-now" onclick="launchGameFromLanding()">Play Game 🚀</button>
+        </div>
+    </div>
+
+    <!-- Main Application Interface (Hidden until Play is clicked) -->
+    <div class="app-wrapper hidden" id="appWrapper">
+        <!-- Top Navigation Header -->
+        <header class="chess-header">
+            <div class="header-left" onclick="returnToLanding()" title="Home">
+                <span class="logo-icon">♟️</span>
+                <span class="brand-title">Twist Chess</span>
+            </div>
+            <div class="header-right">
+                <button class="nav-tool-btn" onclick="openSettingsModal()">⚙️ Settings</button>
+                <button class="nav-tool-btn" onclick="openCustomizationModal()">🎨 Themes</button>
+                <button class="nav-tool-btn" onclick="returnToLanding()">🏠 Home</button>
+            </div>
+        </header>
+
+        <!-- Main Workspace Grid -->
+        <main class="chess-main-grid">
+            <!-- Left Column: Board and Player Cards -->
+            <div class="board-column">
+                <!-- Opponent / Black Player Card -->
+                <div class="player-card" id="player-black-card">
+                    <div class="player-profile">
+                        <div class="player-avatar">B</div>
+                        <div class="player-meta">
+                            <span class="player-username" id="blackUsername">Bot (1500 Elo)</span>
+                            <div class="captured-container" id="captured-black"></div>
                         </div>
-                        <input type="range" id="eloSlider" min="100" max="3200" step="50" value="1500" oninput="updateEloDisplay(this.value)">
-                        <p class="setting-hint">Ranges from beginner level (100) to absolute Grandmaster engine (3200).</p>
                     </div>
-
-                    <div class="setting-item">
-                        <label>Time Control</label>
-                        <select id="timeControlSelect" onchange="changeTimeControl(this.value)">
-                            <option value="0">Unlimited Time</option>
-                            <option value="180">3 Minutes (Blitz)</option>
-                            <option value="300">5 Minutes (Blitz)</option>
-                            <option value="600" selected>10 Minutes (Rapid)</option>
-                            <option value="900">15 Minutes (Rapid)</option>
-                        </select>
-                    </div>
+                    <div class="player-clock" id="timer-black">10:00</div>
                 </div>
 
-                <!-- Stats Tab -->
-                <div class="menu-tab-pane" id="pane-stats">
-                    <div class="stats-grid">
-                        <div class="stat-card">
-                            <span class="stat-value" id="statTotalMoves">0</span>
-                            <span class="stat-label">Total Plies Played</span>
-                        </div>
-                        <div class="stat-card">
-                            <span class="stat-value" id="statCaptures">0</span>
-                            <span class="stat-label">Pieces Captured</span>
-                        </div>
-                        <div class="stat-card">
-                            <span class="stat-value" id="statGameStatus">Active</span>
-                            <span class="stat-label">Match State</span>
+                <!-- The Chessboard Viewport -->
+                <div class="chessboard-container" id="chessboardContainer">
+                    <div class="chessboard" id="chessboard">
+                        <!-- Game Over Modal Banner Inside Board -->
+                        <div class="game-over-banner" id="gameOverBanner">
+                            <h2 id="winnerTitle">Checkmate!</h2>
+                            <p id="winnerSubtitle">White wins by checkmate.</p>
+                            <div class="banner-actions">
+                                <button class="btn btn-primary" onclick="resetGame()">New Match</button>
+                                <button class="btn btn-secondary" onclick="returnToLanding()">Main Menu</button>
+                            </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- Help Tab -->
-                <div class="menu-tab-pane" id="pane-help">
-                    <h3 style="margin-bottom: 8px; color: var(--accent);">Welcome to Twist Chess Pro</h3>
-                    <p style="color: var(--text-muted); font-size: 0.9rem; line-height: 1.5; margin-bottom: 12px;">
-                        Twist Chess is engineered for fluid performance, featuring full rule compliance (castling, en passant, promotion), adjustable computer AI scaling up to 3200 Elo, and deep customization suites.
-                    </p>
-                    <ul style="color: var(--text-muted); font-size: 0.85rem; padding-left: 18px; line-height: 1.6;">
-                        <li>Click any legal piece to reveal movement markers.</li>
-                        <li>Use the top navigation menu to alter your board colors or piece iconography anytime.</li>
-                        <li>Switch to AI mode to test your tactical skills against the dynamic rating slider.</li>
-                    </ul>
+                <!-- User / White Player Card -->
+                <div class="player-card active-turn" id="player-white-card">
+                    <div class="player-profile">
+                        <div class="player-avatar">W</div>
+                        <div class="player-meta">
+                            <span class="player-username" id="whiteUsername">Xzyliam (Player)</span>
+                            <div class="captured-container" id="captured-white"></div>
+                        </div>
+                    </div>
+                    <div class="player-clock" id="timer-white">10:00</div>
                 </div>
+            </div>
+
+            <!-- Right Column: Move Notation Ledger & Control Panel -->
+            <aside class="sidebar-column">
+                <div class="sidebar-tabs">
+                    <button class="sidebar-tab active" onclick="switchSidebarTab('moves')">Notation</button>
+                    <button class="sidebar-tab" onclick="switchSidebarTab('analysis')">Analysis</button>
+                </div>
+
+                <div class="sidebar-pane active" id="pane-moves">
+                    <div class="moves-ledger-box">
+                        <table class="moves-ledger-table">
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>White</th>
+                                    <th>Black</th>
+                                </tr>
+                            </thead>
+                            <tbody id="movesListBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="sidebar-pane" id="pane-analysis">
+                    <div class="analysis-box">
+                        <div class="eval-bar-wrapper">
+                            <div class="eval-fill" id="evalBarFill" style="height: 50%;"></div>
+                        </div>
+                        <div class="analysis-text">
+                            <h4>Engine Evaluation</h4>
+                            <p id="evalScoreText">Equal position (0.0)</p>
+                            <span class="badge" id="moveCountBadge">0 plies</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Action Controls Toolbar -->
+                <div class="action-toolbar">
+                    <button class="tool-btn" onclick="undoMove()" title="Undo Move">↩ Undo</button>
+                    <button class="tool-btn" onclick="flipBoard()" title="Flip Board">🔄 Flip</button>
+                    <button class="tool-btn btn-danger-action" onclick="resetGame()" title="Resign / New Game">🏳️ Resign</button>
+                </div>
+            </aside>
+        </main>
+    </div>
+
+    <!-- Settings Modal -->
+    <div class="modal-overlay" id="settingsModal">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h3>Game Settings</h3>
+                <button class="close-icon-btn" onclick="closeAllModals()">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Sound Effects</label>
+                    <label class="switch-toggle">
+                        <span>Enable audio synthesis</span>
+                        <input type="checkbox" id="soundToggle" checked>
+                    </label>
+                </div>
+                <div class="form-group">
+                    <label>Legal Move Indicators</label>
+                    <label class="switch-toggle">
+                        <span>Show dots and rings on targets</span>
+                        <input type="checkbox" id="highlightToggle" checked>
+                    </label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-primary" onclick="closeAllModals()">Save & Close</button>
             </div>
         </div>
     </div>
 
-    <!-- Promotion Modal -->
+    <!-- Customization Modal -->
+    <div class="modal-overlay" id="customizationModal">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h3>Visual Customization</h3>
+                <button class="close-icon-btn" onclick="closeAllModals()">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Board Color Theme</label>
+                    <select id="boardThemeSelect" onchange="changeBoardTheme(this.value)">
+                        <option value="theme-wood">Classic Wood</option>
+                        <option value="theme-blue">Chess.com Blue</option>
+                        <option value="theme-midnight">Dark Charcoal</option>
+                        <option value="theme-emerald">Tournament Emerald</option>
+                        <option value="theme-purple">Royal Purple</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Piece Icon Set</label>
+                    <select id="pieceSetSelect" onchange="changePieceSet(this.value)">
+                        <option value="neo">Neo Professional (Clean)</option>
+                        <option value="standard">Classic Chess Glyphs</option>
+                        <option value="solid">Solid Silhouette</option>
+                        <option value="fantasy">Fantasy RPG Glyphs</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-primary" onclick="closeAllModals()">Apply Theme</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Promotion Dialog Modal -->
     <div class="modal-overlay" id="promotionModal">
-        <div class="modal">
+        <div class="modal-card promo-card">
             <h3>Choose Promotion Piece</h3>
-            <div class="promo-choices" id="promoChoices"></div>
+            <div class="promo-choices-grid" id="promoChoices"></div>
         </div>
     </div>
 
