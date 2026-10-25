@@ -1,2665 +1,2978 @@
-
-"use strict";
-
-/* ============================================================
-   TWISTCHESS
-   Main gameplay engine
-   ============================================================ */
+/* =========================================================
+   TWISTCHESS 2.0
+   Main JavaScript application
+   Features:
+   - Login / signup demo
+   - Dashboard navigation
+   - Chess game with legal move validation
+   - Click-to-move and drag-and-drop
+   - Move history, captures, undo, reset
+   - Game timers and game modes
+   - Themes and sound preferences
+   - Profile, friends, and game history
+   - Local storage persistence
+   ========================================================= */
 
 (() => {
+  "use strict";
 
-  /* ==========================================================
-     1. CONSTANTS
-     ========================================================== */
+  /* -------------------- CONFIGURATION -------------------- */
 
-  const STORAGE_KEY = "twistchess-settings-v1";
+  const CONFIG = {
+    storageKey: "twistchess_v2",
+    pieceImageBase:
+      "https://chessboardjs.com/img/chesspieces/wikipedia/",
+    chessLibrary:
+      "https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js",
+    defaultTheme: "midnight",
+    defaultMode: "rapid",
+    defaultTime: 600,
+    soundVolume: 0.35,
+    version: "2.0.0"
+  };
 
-  const PIECES = {
-    classic: {
-      w: {
-        k: "♔", q: "♕", r: "♖",
-        b: "♗", n: "♘", p: "♙"
-      },
-      b: {
-        k: "♚", q: "♛", r: "♜",
-        b: "♝", n: "♞", p: "♟"
-      }
-    },
+  const PIECE_CODES = {
+    wk: "wK",
+    wq: "wQ",
+    wr: "wR",
+    wb: "wB",
+    wn: "wN",
+    wp: "wP",
+    bk: "bK",
+    bq: "bQ",
+    br: "bR",
+    bb: "bB",
+    bn: "bN",
+    bp: "bP"
+  };
 
-    solid: {
-      w: {
-        k: "♚", q: "♛", r: "♜",
-        b: "♝", n: "♞", p: "♟"
-      },
-      b: {
-        k: "♚", q: "♛", r: "♜",
-        b: "♝", n: "♞", p: "♟"
-      }
-    },
-
-    letters: {
-      w: {
-        k: "K", q: "Q", r: "R",
-        b: "B", n: "N", p: "P"
-      },
-      b: {
-        k: "K", q: "Q", r: "R",
-        b: "B", n: "N", p: "P"
-      }
-    }
+  const PIECE_SYMBOLS = {
+    wK: "♔",
+    wQ: "♕",
+    wR: "♖",
+    wB: "♗",
+    wN: "♘",
+    wP: "♙",
+    bK: "♚",
+    bQ: "♛",
+    bR: "♜",
+    bB: "♝",
+    bN: "♞",
+    bP: "♟"
   };
 
   const THEMES = [
-    {
-      id: "forest",
-      name: "Forest",
-      light: "#e0e8d4",
-      dark: "#76966c"
-    },
-    {
-      id: "classic",
-      name: "Classic",
-      light: "#f0d9b5",
-      dark: "#b58863"
-    },
-    {
-      id: "ocean",
-      name: "Ocean",
-      light: "#dcebf2",
-      dark: "#638ba5"
-    },
-    {
-      id: "midnight",
-      name: "Midnight",
-      light: "#b9c3d2",
-      dark: "#45516c"
-    },
-    {
-      id: "rose",
-      name: "Rose",
-      light: "#f5dfe4",
-      dark: "#c9859c"
-    },
-    {
-      id: "purple",
-      name: "Purple",
-      light: "#e8ddf4",
-      dark: "#9475b9"
-    },
-    {
-      id: "monochrome",
-      name: "Monochrome",
-      light: "#e5e5e5",
-      dark: "#777777"
-    }
+    "midnight",
+    "classic",
+    "forest",
+    "ocean",
+    "purple",
+    "rose",
+    "light"
   ];
 
-  const MODES = [
-    {
-      id: "classic",
-      name: "Classic Chess",
-      icon: "♟",
-      tag: "ORIGINAL",
-      description: "Traditional chess with standard pieces and rules."
-    },
-    {
-      id: "roook",
-      name: "ROOOK",
-      icon: "♜",
-      tag: "CHAOS",
-      description: "Every bishop and knight is replaced by a rook."
-    },
-    {
-      id: "big",
-      name: "Big Board",
-      icon: "▦",
-      tag: "EXPANDED",
-      description: "A huge 10×10 battlefield with extra pieces."
-    },
-    {
-      id: "small",
-      name: "Small Board",
-      icon: "▥",
-      tag: "FAST",
-      description: "A compact 6×6 battlefield."
-    },
-    {
-      id: "hidden",
-      name: "Hidden Queen",
-      icon: "♛",
-      tag: "SECRET",
-      description: "Choose a pawn that secretly moves like a queen."
-    },
-    {
-      id: "horde",
-      name: "Pawn Horde",
-      icon: "♙",
-      tag: "SURVIVAL",
-      description: "A large pawn army challenges a regular army."
-    },
-    {
-      id: "knightmare",
-      name: "Knightmare",
-      icon: "♞",
-      tag: "TACTICAL",
-      description: "Replace bishops and rooks with knights."
-    },
-    {
-      id: "bishop",
-      name: "Bishop Blitz",
-      icon: "♗",
-      tag: "DIAGONAL",
-      description: "Replace knights and rooks with bishops."
-    },
-    {
-      id: "queenrush",
-      name: "Queen Rush",
-      icon: "♕",
-      tag: "POWER",
-      description: "Major and minor pieces become queens."
-    },
-    {
-      id: "atomic",
-      name: "Atomic",
-      icon: "✹",
-      tag: "EXPLOSIVE",
-      description: "Captures explode nearby non-pawn pieces."
-    },
-    {
-      id: "shuffle",
-      name: "Shuffle",
-      icon: "⤨",
-      tag: "RANDOM",
-      description: "Start with randomized back ranks."
-    },
-    {
-      id: "kingrace",
-      name: "King Race",
-      icon: "♔",
-      tag: "RACE",
-      description: "Race your king to the opposite edge."
-    },
-    {
-      id: "pawnwars",
-      name: "Pawn Wars",
-      icon: "♙",
-      tag: "MINIMAL",
-      description: "Only kings and pawns remain."
-    },
-    {
-      id: "noqueens",
-      name: "No Queens",
-      icon: "◇",
-      tag: "STRATEGY",
-      description: "Chess without starting queens."
-    },
-    {
-      id: "mirror",
-      name: "Mirror Army",
-      icon: "⇄",
-      tag: "TWIST",
-      description: "Play with horizontally mirrored back ranks."
-    }
-  ];
-
-  const DEFAULT_SETTINGS = {
-    theme: "forest",
-    pieceStyle: "classic",
-    orientation: "white",
-    sound: true,
-    legal: true,
-    coords: true,
-    animation: true,
-    pieceSize: 90
+  const MODES = {
+    bullet: { label: "Bullet", seconds: 60 },
+    blitz: { label: "Blitz", seconds: 180 },
+    rapid: { label: "Rapid", seconds: 600 },
+    classical: { label: "Classical", seconds: 1800 },
+    untimed: { label: "Untimed", seconds: 0 },
+    practice: { label: "Practice", seconds: 0 }
   };
 
-  const $ = id => document.getElementById(id);
+  /* -------------------- APPLICATION STATE -------------------- */
 
-  const FILES = "abcdefghij";
+  const state = {
+    chess: null,
+    selectedSquare: null,
+    legalTargets: [],
+    currentScreen: "dashboard",
+    currentMode: CONFIG.defaultMode,
+    boardFlipped: false,
+    gameStarted: false,
+    gameOver: false,
+    gameResult: null,
+    timerInterval: null,
+    lastTick: null,
+    soundEnabled: true,
+    soundVolume: CONFIG.soundVolume,
+    boardTheme: "green",
+    moveSoundContext: null,
+    selectedFriend: null,
+    draggedFrom: null,
+    promotionPending: null,
+    libraryReady: false,
+    libraryLoading: false
+  };
 
-  const KNIGHT_STEPS = [
-    [-2, -1], [-2, 1],
-    [-1, -2], [-1, 2],
-    [1, -2], [1, 2],
-    [2, -1], [2, 1]
-  ];
+  const defaultData = {
+    account: null,
+    profile: {
+      username: "Player",
+      displayName: "Chess Player",
+      avatar: "",
+      bio: "Ready for the next game.",
+      country: "",
+      rating: 1200
+    },
+    preferences: {
+      theme: CONFIG.defaultTheme,
+      boardTheme: "green",
+      pieceStyle: "classic",
+      soundEnabled: true,
+      soundVolume: CONFIG.soundVolume,
+      coordinates: true,
+      showLegalMoves: true,
+      confirmResign: true,
+      autoQueen: true
+    },
+    stats: {
+      gamesPlayed: 0,
+      wins: 0,
+      losses: 0,
+      draws: 0,
+      rating: 1200
+    },
+    friends: [],
+    history: [],
+    currentGame: null
+  };
 
-  const KING_STEPS = [
-    [-1, -1], [-1, 0], [-1, 1],
-    [0, -1],             [0, 1],
-    [1, -1],  [1, 0],   [1, 1]
-  ];
+  let appData = loadData();
 
-  const ROOK_DIRECTIONS = [
-    [-1, 0], [1, 0],
-    [0, -1], [0, 1]
-  ];
+  /* -------------------- GENERAL HELPERS -------------------- */
 
-  const BISHOP_DIRECTIONS = [
-    [-1, -1], [-1, 1],
-    [1, -1], [1, 1]
-  ];
+  const $ = (selector, root = document) =>
+    root.querySelector(selector);
 
-  const QUEEN_DIRECTIONS = [
-    ...ROOK_DIRECTIONS,
-    ...BISHOP_DIRECTIONS
-  ];
+  const $$ = (selector, root = document) =>
+    Array.from(root.querySelectorAll(selector));
 
-  /* ==========================================================
-     2. APPLICATION STATE
-     ========================================================== */
-
-  let settings = loadSettings();
-
-  let game = null;
-
-  let selected = null;
-
-  let legalTargets = [];
-
-  let history = [];
-
-  let moveHistory = [];
-
-  let flipped = false;
-
-  let currentMode = "classic";
-
-  let audioContext = null;
-
-  let gameVersion = 0;
-
-  /* ==========================================================
-     3. STORAGE
-     ========================================================== */
-
-  function loadSettings() {
-    try {
-      const saved = JSON.parse(
-        localStorage.getItem(STORAGE_KEY) || "{}"
-      );
-
-      return {
-        ...DEFAULT_SETTINGS,
-        ...saved
-      };
-    } catch {
-      return { ...DEFAULT_SETTINGS };
-    }
+  function byId(id) {
+    return document.getElementById(id);
   }
 
-  function saveSettings() {
-    try {
-      localStorage.setItem(
-        STORAGE_KEY,
-        JSON.stringify(settings)
-      );
-    } catch {
-      // The game remains playable if storage is disabled.
-    }
-  }
-
-  /* ==========================================================
-     4. BOARD UTILITIES
-     ========================================================== */
-
-  function inside(board, r, c) {
-    return (
-      r >= 0 &&
-      c >= 0 &&
-      r < board.length &&
-      c < board[0].length
-    );
-  }
-
-  function createPiece(type, color, extra = {}) {
-    return {
-      type,
-      color,
-      moved: false,
-      secret: false,
-      ...extra
-    };
-  }
-
-  function cloneBoard(board) {
-    return board.map(row =>
-      row.map(piece => piece ? { ...piece } : null)
-    );
-  }
-
-  function cloneGame(source) {
-    return {
-      ...source,
-      board: cloneBoard(source.board),
-      enPassant: source.enPassant
-        ? { ...source.enPassant }
-        : null,
-      secrets: { ...source.secrets },
-      captured: {
-        w: [...source.captured.w],
-        b: [...source.captured.b]
-      }
-    };
-  }
-
-  function other(color) {
-    return color === "w" ? "b" : "w";
-  }
-
-  function colorName(color) {
-    return color === "w" ? "White" : "Black";
-  }
-
-  function squareName(r, c, size) {
-    return FILES[c] + (size - r);
-  }
-
-  function getMode(id) {
-    return MODES.find(mode => mode.id === id) || MODES[0];
-  }
-
-  function isFriendly(piece, color) {
-    return piece && piece.color === color;
-  }
-
-  function isEnemy(piece, color) {
-    return piece && piece.color !== color;
-  }
-
-  function sameSquare(a, b) {
-    return (
-      a &&
-      b &&
-      a.r === b.r &&
-      a.c === b.c
-    );
-  }
-
-  /* ==========================================================
-     5. INITIAL BOARD GENERATION
-     ========================================================== */
-
-  function emptyBoard(size) {
-    return Array.from(
-      { length: size },
-      () => Array(size).fill(null)
-    );
-  }
-
-  function standardBackRank() {
-    return [
-      "r", "n", "b", "q",
-      "k", "b", "n", "r"
-    ];
-  }
-
-  function modeBackRank(mode) {
-    const rank = standardBackRank();
-
-    if (mode === "roook") {
-      return [
-        "r", "r", "r", "q",
-        "k", "r", "r", "r"
-      ];
-    }
-
-    if (mode === "knightmare") {
-      return [
-        "n", "n", "n", "q",
-        "k", "n", "n", "n"
-      ];
-    }
-
-    if (mode === "bishop") {
-      return [
-        "b", "b", "b", "q",
-        "k", "b", "b", "b"
-      ];
-    }
-
-    if (mode === "queenrush") {
-      return [
-        "q", "q", "q", "q",
-        "k", "q", "q", "q"
-      ];
-    }
-
-    if (mode === "mirror") {
-      return [...rank].reverse();
-    }
-
-    if (mode === "noqueens") {
-      return [
-        "r", "n", "b", null,
-        "k", "b", "n", "r"
-      ];
-    }
-
-    if (mode === "pawnwars") {
-      return [
-        null, null, null, null,
-        "k", null, null, null
-      ];
-    }
-
-    if (mode === "shuffle") {
-      return shuffledBackRank();
-    }
-
-    return rank;
-  }
-
-  function shuffledBackRank() {
-    const rank = Array(8).fill(null);
-
-    const even = [0, 2, 4, 6];
-    const odd = [1, 3, 5, 7];
-
-    const firstBishop =
-      even[Math.floor(Math.random() * even.length)];
-
-    const secondBishop =
-      odd[Math.floor(Math.random() * odd.length)];
-
-    rank[firstBishop] = "b";
-    rank[secondBishop] = "b";
-
-    function freeSquares() {
-      return rank
-        .map((piece, index) => piece === null ? index : -1)
-        .filter(index => index !== -1);
-    }
-
-    function placeRandom(type) {
-      const free = freeSquares();
-      const chosen =
-        free[Math.floor(Math.random() * free.length)];
-
-      rank[chosen] = type;
-    }
-
-    placeRandom("q");
-    placeRandom("n");
-    placeRandom("n");
-
-    const remaining = freeSquares().sort((a, b) => a - b);
-
-    rank[remaining[0]] = "r";
-    rank[remaining[1]] = "k";
-    rank[remaining[2]] = "r";
-
-    return rank;
-  }
-
-  function placeArmy(board, color, backRank) {
-    const size = board.length;
-
-    const backRow = color === "w" ? size - 1 : 0;
-    const pawnRow = color === "w" ? size - 2 : 1;
-
-    backRank.forEach((type, col) => {
-      if (type) {
-        board[backRow][col] = createPiece(type, color);
-      }
-    });
-
-    for (let c = 0; c < size; c++) {
-      board[pawnRow][c] = createPiece("p", color);
-    }
-  }
-
-  function setupBigBoard(board) {
-    const back = [
-      "r", "n", "b", "r", "q",
-      "k", "r", "b", "n", "r"
-    ];
-
-    placeArmy(board, "b", back);
-    placeArmy(board, "w", back);
-  }
-
-  function setupSmallBoard(board) {
-    const back = [
-      "r", "n", "q",
-      "k", "n", "r"
-    ];
-
-    placeArmy(board, "b", back);
-    placeArmy(board, "w", back);
-  }
-
-  function setupHorde(board) {
-    placeArmy(board, "b", standardBackRank());
-
-    const size = board.length;
-
-    // White's horde deliberately has no king.
-    // Its objective is to eliminate Black's army.
-
-    for (let r = 4; r < size; r++) {
-      for (let c = 0; c < size; c++) {
-        board[r][c] = createPiece("p", "w");
-      }
-    }
-  }
-
-  function setupKingRace(board) {
-    const size = board.length;
-
-    board[0][3] = createPiece("k", "b");
-    board[size - 1][4] = createPiece("k", "w");
-
-    const whiteRow = size - 2;
-    const blackRow = 1;
-
-    for (const c of [1, 2, 5, 6]) {
-      board[whiteRow][c] = createPiece("n", "w");
-      board[blackRow][c] = createPiece("n", "b");
-    }
-  }
-
-  function setupBoard(mode) {
-    const size = mode === "big"
-      ? 10
-      : mode === "small"
-        ? 6
-        : 8;
-
-    const board = emptyBoard(size);
-
-    if (mode === "big") {
-      setupBigBoard(board);
-    } else if (mode === "small") {
-      setupSmallBoard(board);
-    } else if (mode === "horde") {
-      setupHorde(board);
-    } else if (mode === "kingrace") {
-      setupKingRace(board);
-    } else {
-      const back = modeBackRank(mode);
-
-      placeArmy(board, "b", back);
-      placeArmy(board, "w", back);
-    }
-
-    return board;
-  }
-
-  /* ==========================================================
-     6. GAME CREATION
-     ========================================================== */
-
-  function createGame(mode) {
-    return {
-      mode,
-      board: setupBoard(mode),
-      turn: "w",
-      fullmove: 1,
-      halfmove: 0,
-      enPassant: null,
-      secrets: {
-        w: null,
-        b: null
-      },
-      hiddenSetup: mode === "hidden" ? "w" : null,
-      captured: {
-        w: [],
-        b: []
-      },
-      winner: null,
-      result: null,
-      lastMove: null,
-      status: "playing"
-    };
-  }
-
-  function newGame(mode = currentMode) {
-    gameVersion++;
-
-    currentMode = mode;
-
-    game = createGame(mode);
-
-    selected = null;
-    legalTargets = [];
-
-    history = [];
-    moveHistory = [];
-
-    flipped = settings.orientation === "black";
-
-    $("modeTitle").textContent = getMode(mode).name;
-    $("modeDescription").textContent =
-      getMode(mode).description;
-
-    $("tipText").textContent =
-      "Select a piece to see its legal moves.";
-
-    showView("play");
-
-    renderAll();
-
-    playSound("start");
-  }
-
-  /* ==========================================================
-     7. ATTACK DETECTION
-     ========================================================== */
-
-  function findKing(board, color) {
-    for (let r = 0; r < board.length; r++) {
-      for (let c = 0; c < board.length; c++) {
-        const piece = board[r][c];
-
-        if (
-          piece &&
-          piece.type === "k" &&
-          piece.color === color
-        ) {
-          return { r, c };
-        }
-      }
+  function firstExisting(selectors) {
+    for (const selector of selectors) {
+      const element = $(selector);
+      if (element) return element;
     }
 
     return null;
   }
 
-  function slidingAttacks(
-    board,
-    r,
-    c,
-    directions,
-    targetR,
-    targetC
-  ) {
-    for (const [dr, dc] of directions) {
-      let nr = r + dr;
-      let nc = c + dc;
+  function allExisting(selectors) {
+    const found = [];
 
-      while (inside(board, nr, nc)) {
-        if (nr === targetR && nc === targetC) {
-          return true;
-        }
+    selectors.forEach((selector) => {
+      $$(selector).forEach((element) => {
+        if (!found.includes(element)) found.push(element);
+      });
+    });
 
-        if (board[nr][nc]) {
-          break;
-        }
-
-        nr += dr;
-        nc += dc;
-      }
-    }
-
-    return false;
+    return found;
   }
 
-  function pieceAttacksSquare(
-    state,
-    r,
-    c,
-    targetR,
-    targetC
-  ) {
-    const board = state.board;
-    const piece = board[r][c];
+  function escapeHTML(value) {
+    return String(value ?? "").replace(/[&<>"']/g, (character) => {
+      const replacements = {
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#039;"
+      };
 
-    if (!piece) return false;
-
-    const dr = targetR - r;
-    const dc = targetC - c;
-
-    if (piece.type === "p" && !piece.secret) {
-      const direction = piece.color === "w" ? -1 : 1;
-
-      return (
-        dr === direction &&
-        Math.abs(dc) === 1
-      );
-    }
-
-    const type = piece.secret ? "q" : piece.type;
-
-    if (type === "n") {
-      return KNIGHT_STEPS.some(
-        ([a, b]) => a === dr && b === dc
-      );
-    }
-
-    if (type === "k") {
-      return Math.max(
-        Math.abs(dr),
-        Math.abs(dc)
-      ) === 1;
-    }
-
-    if (type === "r") {
-      return slidingAttacks(
-        board,
-        r,
-        c,
-        ROOK_DIRECTIONS,
-        targetR,
-        targetC
-      );
-    }
-
-    if (type === "b") {
-      return slidingAttacks(
-        board,
-        r,
-        c,
-        BISHOP_DIRECTIONS,
-        targetR,
-        targetC
-      );
-    }
-
-    if (type === "q") {
-      return slidingAttacks(
-        board,
-        r,
-        c,
-        QUEEN_DIRECTIONS,
-        targetR,
-        targetC
-      );
-    }
-
-    return false;
+      return replacements[character];
+    });
   }
 
-  function isAttacked(state, r, c, byColor) {
-    const board = state.board;
-
-    for (let sr = 0; sr < board.length; sr++) {
-      for (let sc = 0; sc < board.length; sc++) {
-        const piece = board[sr][sc];
-
-        if (!piece || piece.color !== byColor) {
-          continue;
-        }
-
-        if (
-          pieceAttacksSquare(
-            state,
-            sr,
-            sc,
-            r,
-            c
-          )
-        ) {
-          return true;
-        }
-      }
-    }
-
-    return false;
+  function clamp(value, min, max) {
+    return Math.min(max, Math.max(min, value));
   }
 
-  function isInCheck(state, color) {
-    const king = findKing(state.board, color);
-
-    if (!king) {
-      return false;
-    }
-
-    return isAttacked(
-      state,
-      king.r,
-      king.c,
-      other(color)
+  function randomId() {
+    return (
+      Date.now().toString(36) +
+      Math.random().toString(36).slice(2, 8)
     );
   }
 
-  /* ==========================================================
-     8. MOVE GENERATION
-     ========================================================== */
+  function formatDate(dateValue) {
+    const date = new Date(dateValue);
 
-  function createMove(fr, fc, tr, tc, extra = {}) {
-    return {
-      fr,
-      fc,
-      tr,
-      tc,
-      ...extra
-    };
+    if (Number.isNaN(date.getTime())) {
+      return "Unknown date";
+    }
+
+    return date.toLocaleDateString(undefined, {
+      year: "numeric",
+      month: "short",
+      day: "numeric"
+    });
   }
 
-  function slidingMoves(
-    state,
-    r,
-    c,
-    directions
-  ) {
-    const board = state.board;
-    const piece = board[r][c];
+  function formatDuration(seconds) {
+    const total = Math.max(0, Math.floor(seconds || 0));
+    const minutes = Math.floor(total / 60);
+    const remainder = total % 60;
 
-    const moves = [];
-
-    for (const [dr, dc] of directions) {
-      let nr = r + dr;
-      let nc = c + dc;
-
-      while (inside(board, nr, nc)) {
-        const target = board[nr][nc];
-
-        if (isFriendly(target, piece.color)) {
-          break;
-        }
-
-        if (!target || target.type !== "k") {
-          moves.push(createMove(r, c, nr, nc));
-        }
-
-        if (target) {
-          break;
-        }
-
-        nr += dr;
-        nc += dc;
-      }
-    }
-
-    return moves;
+    return `${String(minutes).padStart(2, "0")}:${String(
+      remainder
+    ).padStart(2, "0")}`;
   }
 
-  function jumpingMoves(
-    state,
-    r,
-    c,
-    steps
-  ) {
-    const board = state.board;
-    const piece = board[r][c];
-
-    const moves = [];
-
-    for (const [dr, dc] of steps) {
-      const nr = r + dr;
-      const nc = c + dc;
-
-      if (!inside(board, nr, nc)) continue;
-
-      const target = board[nr][nc];
-
-      if (
-        !isFriendly(target, piece.color) &&
-        (!target || target.type !== "k")
-      ) {
-        moves.push(createMove(r, c, nr, nc));
-      }
-    }
-
-    return moves;
+  function setText(selectors, value) {
+    allExisting(selectors).forEach((element) => {
+      element.textContent = value;
+    });
   }
 
-  function pawnMoves(state, r, c) {
-    const board = state.board;
-    const piece = board[r][c];
+  function setVisible(element, visible) {
+    if (!element) return;
 
-    const moves = [];
-
-    const direction = piece.color === "w" ? -1 : 1;
-    const startRow =
-      piece.color === "w" ? board.length - 2 : 1;
-
-    const nr = r + direction;
-
-    if (
-      inside(board, nr, c) &&
-      !board[nr][c]
-    ) {
-      moves.push(createMove(r, c, nr, c));
-
-      const doubleRow = r + direction * 2;
-
-      if (
-        r === startRow &&
-        !piece.moved &&
-        inside(board, doubleRow, c) &&
-        !board[doubleRow][c]
-      ) {
-        moves.push(
-          createMove(r, c, doubleRow, c, {
-            doublePawn: true
-          })
-        );
-      }
-    }
-
-    for (const dc of [-1, 1]) {
-      const nc = c + dc;
-
-      if (!inside(board, nr, nc)) continue;
-
-      const target = board[nr][nc];
-
-      if (
-        isEnemy(target, piece.color) &&
-        target.type !== "k"
-      ) {
-        moves.push(createMove(r, c, nr, nc));
-      }
-
-      const ep = state.enPassant;
-
-      if (
-        ep &&
-        ep.r === nr &&
-        ep.c === nc &&
-        ep.color !== piece.color &&
-        board[r][nc] &&
-        board[r][nc].type === "p" &&
-        board[r][nc].color !== piece.color
-      ) {
-        moves.push(
-          createMove(r, c, nr, nc, {
-            enPassant: true
-          })
-        );
-      }
-    }
-
-    return moves;
+    element.hidden = !visible;
+    element.setAttribute("aria-hidden", String(!visible));
   }
 
-  /* ==========================================================
-     9. CASTLING
-     ========================================================== */
+  function announce(message) {
+    let toast = firstExisting([
+      "#toast",
+      "#toastContainer",
+      ".toast-container",
+      ".toast"
+    ]);
 
-  function castlingMoves(state, r, c) {
-    const board = state.board;
-    const king = board[r][c];
+    if (!toast) {
+      toast = document.createElement("div");
+      toast.id = "twistchess-toast";
+      toast.className = "toast";
+      toast.setAttribute("role", "status");
+      toast.setAttribute("aria-live", "polite");
 
-    if (
-      !king ||
-      king.type !== "k" ||
-      king.moved ||
-      state.mode === "kingrace" ||
-      state.mode === "atomic"
-    ) {
-      return [];
+      Object.assign(toast.style, {
+        position: "fixed",
+        right: "20px",
+        bottom: "20px",
+        zIndex: "99999",
+        maxWidth: "min(360px, calc(100vw - 40px))",
+        padding: "12px 16px",
+        borderRadius: "12px",
+        background: "#202738",
+        color: "#fff",
+        boxShadow: "0 8px 30px rgba(0,0,0,.25)",
+        fontSize: "14px",
+        opacity: "0",
+        transform: "translateY(8px)",
+        transition: "opacity .2s ease, transform .2s ease",
+        pointerEvents: "none"
+      });
+
+      document.body.appendChild(toast);
     }
 
-    if (isInCheck(state, king.color)) {
-      return [];
+    toast.textContent = message;
+    toast.classList.add("is-visible");
+
+    if (toast.id === "twistchess-toast") {
+      requestAnimationFrame(() => {
+        toast.style.opacity = "1";
+        toast.style.transform = "translateY(0)";
+      });
     }
 
-    const moves = [];
+    clearTimeout(toast._hideTimeout);
 
-    for (const rookCol of [0, board.length - 1]) {
-      const rook = board[r][rookCol];
-
-      if (
-        !rook ||
-        rook.type !== "r" ||
-        rook.color !== king.color ||
-        rook.moved
-      ) {
-        continue;
+    toast._hideTimeout = setTimeout(() => {
+      if (toast.id === "twistchess-toast") {
+        toast.style.opacity = "0";
+        toast.style.transform = "translateY(8px)";
+      } else {
+        toast.classList.remove("is-visible");
       }
-
-      const direction = rookCol > c ? 1 : -1;
-
-      const destination = c + direction * 2;
-
-      if (
-        !inside(board, r, destination)
-      ) {
-        continue;
-      }
-
-      let clear = true;
-
-      for (
-        let col = c + direction;
-        col !== rookCol;
-        col += direction
-      ) {
-        if (board[r][col]) {
-          clear = false;
-          break;
-        }
-      }
-
-      if (!clear) continue;
-
-      if (
-        isAttacked(
-          state,
-          r,
-          c + direction,
-          other(king.color)
-        ) ||
-        isAttacked(
-          state,
-          r,
-          destination,
-          other(king.color)
-        )
-      ) {
-        continue;
-      }
-
-      moves.push(
-        createMove(r, c, r, destination, {
-          castle: true,
-          rookFrom: rookCol,
-          rookTo: c + direction
-        })
-      );
-    }
-
-    return moves;
+    }, 2800);
   }
 
-  /* ==========================================================
-     10. PSEUDO-LEGAL MOVES
-     ========================================================== */
+  /* -------------------- LOCAL STORAGE -------------------- */
 
-  function pseudoMoves(state, r, c) {
-    const board = state.board;
-    const piece = board[r]?.[c];
+  function loadData() {
+    try {
+      const raw = localStorage.getItem(CONFIG.storageKey);
 
-    if (!piece) return [];
+      if (!raw) return structuredCloneSafe(defaultData);
 
-    if (piece.secret) {
-      return slidingMoves(
-        state,
-        r,
-        c,
-        QUEEN_DIRECTIONS
-      );
-    }
+      const saved = JSON.parse(raw);
 
-    switch (piece.type) {
-      case "p":
-        return pawnMoves(state, r, c);
-
-      case "n":
-        return jumpingMoves(
-          state,
-          r,
-          c,
-          KNIGHT_STEPS
-        );
-
-      case "b":
-        return slidingMoves(
-          state,
-          r,
-          c,
-          BISHOP_DIRECTIONS
-        );
-
-      case "r":
-        return slidingMoves(
-          state,
-          r,
-          c,
-          ROOK_DIRECTIONS
-        );
-
-      case "q":
-        return slidingMoves(
-          state,
-          r,
-          c,
-          QUEEN_DIRECTIONS
-        );
-
-      case "k":
-        return [
-          ...jumpingMoves(
-            state,
-            r,
-            c,
-            KING_STEPS
-          ),
-          ...castlingMoves(state, r, c)
-        ];
-
-      default:
-        return [];
-    }
-  }
-
-  /* ==========================================================
-     11. SIMULATING MOVES
-     ========================================================== */
-
-  function applyMove(state, move, simulation = false) {
-    const next = cloneGame(state);
-    const board = next.board;
-
-    const piece = board[move.fr][move.fc];
-
-    if (!piece) return next;
-
-    const target = board[move.tr][move.tc];
-
-    let captured = target;
-
-    board[move.fr][move.fc] = null;
-
-    if (move.enPassant) {
-      captured = board[move.fr][move.tc];
-      board[move.fr][move.tc] = null;
-    }
-
-    const moving = {
-      ...piece,
-      moved: true
-    };
-
-    board[move.tr][move.tc] = moving;
-
-    if (move.castle) {
-      const rook = board[move.fr][move.rookFrom];
-
-      board[move.fr][move.rookFrom] = null;
-
-      board[move.fr][move.rookTo] = {
-        ...rook,
-        moved: true
+      return {
+        ...structuredCloneSafe(defaultData),
+        ...saved,
+        profile: {
+          ...defaultData.profile,
+          ...(saved.profile || {})
+        },
+        preferences: {
+          ...defaultData.preferences,
+          ...(saved.preferences || {})
+        },
+        stats: {
+          ...defaultData.stats,
+          ...(saved.stats || {})
+        },
+        friends: Array.isArray(saved.friends)
+          ? saved.friends
+          : [],
+        history: Array.isArray(saved.history)
+          ? saved.history
+          : []
       };
+    } catch (error) {
+      console.warn("TwistChess: Could not load saved data.", error);
+      return structuredCloneSafe(defaultData);
+    }
+  }
+
+  function structuredCloneSafe(value) {
+    return JSON.parse(JSON.stringify(value));
+  }
+
+  function saveData() {
+    try {
+      localStorage.setItem(
+        CONFIG.storageKey,
+        JSON.stringify(appData)
+      );
+    } catch (error) {
+      console.warn("TwistChess: Could not save data.", error);
+      announce("Your browser could not save the latest changes.");
+    }
+  }
+
+  /* -------------------- CHESS LIBRARY -------------------- */
+
+  function loadChessLibrary() {
+    if (typeof window.Chess === "function") {
+      state.libraryReady = true;
+      initializeChess();
+      return Promise.resolve(true);
     }
 
-    // Atomic variant:
-    // A capture destroys the capturing piece and nearby
-    // non-pawn pieces. Kings may not be captured directly.
-
-    if (
-      state.mode === "atomic" &&
-      captured
-    ) {
-      for (let dr = -1; dr <= 1; dr++) {
-        for (let dc = -1; dc <= 1; dc++) {
-          const nr = move.tr + dr;
-          const nc = move.tc + dc;
-
-          if (!inside(board, nr, nc)) continue;
-
-          const nearby = board[nr][nc];
-
-          if (!nearby) continue;
-
-          const center = dr === 0 && dc === 0;
-
-          if (center || nearby.type !== "p") {
-            board[nr][nc] = null;
+    if (state.libraryLoading) {
+      return new Promise((resolve) => {
+        const check = setInterval(() => {
+          if (state.libraryReady) {
+            clearInterval(check);
+            resolve(true);
+          } else if (!state.libraryLoading) {
+            clearInterval(check);
+            resolve(false);
           }
+        }, 100);
+      });
+    }
+
+    state.libraryLoading = true;
+
+    return new Promise((resolve) => {
+      const script = document.createElement("script");
+
+      script.src = CONFIG.chessLibrary;
+      script.async = true;
+
+      script.onload = () => {
+        state.libraryLoading = false;
+        state.libraryReady = typeof window.Chess === "function";
+
+        if (state.libraryReady) {
+          initializeChess();
+          resolve(true);
+        } else {
+          showChessUnavailable();
+          resolve(false);
         }
-      }
-    }
-
-    // Standard promotion to a queen by default.
-    // The UI can later expose underpromotion choices.
-
-    if (
-      board[move.tr][move.tc] &&
-      board[move.tr][move.tc].type === "p" &&
-      !board[move.tr][move.tc].secret &&
-      (
-        move.tr === 0 ||
-        move.tr === board.length - 1
-      )
-    ) {
-      board[move.tr][move.tc].type =
-        move.promotion || "q";
-    }
-
-    next.enPassant = null;
-
-    if (
-      piece.type === "p" &&
-      Math.abs(move.tr - move.fr) === 2
-    ) {
-      next.enPassant = {
-        r: (move.tr + move.fr) / 2,
-        c: move.fc,
-        color: piece.color
       };
-    }
 
-    if (!simulation) {
-      if (captured) {
-        next.captured[piece.color].push(
-          captured.type
-        );
-      }
+      script.onerror = () => {
+        state.libraryLoading = false;
+        showChessUnavailable();
+        resolve(false);
+      };
 
-      next.lastMove = { ...move };
-
-      next.halfmove =
-        captured || piece.type === "p"
-          ? 0
-          : state.halfmove + 1;
-
-      if (piece.color === "b") {
-        next.fullmove++;
-      }
-    }
-
-    next.turn = other(piece.color);
-
-    return next;
-  }
-
-  /* ==========================================================
-     12. LEGAL MOVE FILTER
-     ========================================================== */
-
-  function legalMovesFor(state, r, c) {
-    const piece = state.board[r]?.[c];
-
-    if (!piece) return [];
-
-    if (piece.color !== state.turn) {
-      return [];
-    }
-
-    const pseudo = pseudoMoves(state, r, c);
-
-    return pseudo.filter(move => {
-      const simulated = applyMove(
-        state,
-        move,
-        true
-      );
-
-      if (state.mode === "horde" && piece.color === "w") {
-        return true;
-      }
-
-      if (state.mode === "kingrace") {
-        // In this variant kings still cannot move
-        // onto squares controlled by the opponent.
-        return !isInCheck(simulated, piece.color);
-      }
-
-      if (state.mode === "atomic") {
-        const king = findKing(
-          simulated.board,
-          piece.color
-        );
-
-        if (!king) return false;
-
-        return !isInCheck(
-          simulated,
-          piece.color
-        );
-      }
-
-      return !isInCheck(
-        simulated,
-        piece.color
-      );
+      document.head.appendChild(script);
     });
   }
 
-  function allLegalMoves(state, color = state.turn) {
-    const copy = {
-      ...state,
-      turn: color
-    };
-
-    const moves = [];
-
-    for (let r = 0; r < copy.board.length; r++) {
-      for (let c = 0; c < copy.board.length; c++) {
-        const piece = copy.board[r][c];
-
-        if (
-          piece &&
-          piece.color === color
-        ) {
-          moves.push(
-            ...legalMovesFor(copy, r, c)
-          );
-        }
-      }
-    }
-
-    return moves;
-  }
-
-  /* ==========================================================
-     13. SPECIAL VICTORY CONDITIONS
-     ========================================================== */
-
-  function countPieces(state, color) {
-    let count = 0;
-
-    for (const row of state.board) {
-      for (const piece of row) {
-        if (
-          piece &&
-          piece.color === color
-        ) {
-          count++;
-        }
-      }
-    }
-
-    return count;
-  }
-
-  function finishGame(state, winner, result) {
-    state.winner = winner;
-    state.result = result;
-    state.status = "finished";
-  }
-
-  function evaluateGame(state) {
-    if (state.status === "finished") {
-      return;
-    }
-
-    if (state.mode === "kingrace") {
-      const whiteKing = findKing(state.board, "w");
-      const blackKing = findKing(state.board, "b");
-
-      if (whiteKing && whiteKing.r === 0) {
-        finishGame(
-          state,
-          "w",
-          "White wins the king race!"
-        );
-        return;
-      }
-
-      if (
-        blackKing &&
-        blackKing.r === state.board.length - 1
-      ) {
-        finishGame(
-          state,
-          "b",
-          "Black wins the king race!"
-        );
-        return;
-      }
-    }
-
-    if (state.mode === "horde") {
-      if (countPieces(state, "w") === 0) {
-        finishGame(
-          state,
-          "b",
-          "Black defeated the pawn horde!"
-        );
-        return;
-      }
-
-      if (countPieces(state, "b") === 0) {
-        finishGame(
-          state,
-          "w",
-          "The pawn horde wins!"
-        );
-        return;
-      }
-    }
-
-    if (state.mode === "atomic") {
-      const whiteKing = findKing(state.board, "w");
-      const blackKing = findKing(state.board, "b");
-
-      if (!whiteKing) {
-        finishGame(
-          state,
-          "b",
-          "Black wins by explosion!"
-        );
-        return;
-      }
-
-      if (!blackKing) {
-        finishGame(
-          state,
-          "w",
-          "White wins by explosion!"
-        );
-        return;
-      }
-    }
-
-    const moves = allLegalMoves(state);
-
-    if (moves.length === 0) {
-      if (isInCheck(state, state.turn)) {
-        finishGame(
-          state,
-          other(state.turn),
-          `${colorName(other(state.turn))} wins by checkmate!`
-        );
-      } else {
-        finishGame(
-          state,
-          null,
-          "Draw by stalemate."
-        );
-      }
-
-      return;
-    }
-
-    if (state.halfmove >= 100) {
-      finishGame(
-        state,
-        null,
-        "Draw by the 50-move rule."
-      );
-    }
-  }
-
-  /* ==========================================================
-     14. HIDDEN QUEEN SETUP
-     ========================================================== */
-
-  function chooseHiddenQueen(r, c) {
-    if (
-      game.mode !== "hidden" ||
-      !game.hiddenSetup
-    ) {
-      return false;
-    }
-
-    const piece = game.board[r][c];
-
-    if (
-      !piece ||
-      piece.type !== "p" ||
-      piece.color !== game.hiddenSetup
-    ) {
-      showToast(
-        `Choose one of ${colorName(game.hiddenSetup)}'s pawns.`,
-        "error"
-      );
-      return true;
-    }
-
-    const color = game.hiddenSetup;
-
-    piece.secret = true;
-
-    game.secrets[color] = { r, c };
-
-    if (color === "w") {
-      game.hiddenSetup = "b";
-
-      showToast(
-        "White's secret queen selected. Pass the device to Black.",
-        "success"
-      );
-    } else {
-      game.hiddenSetup = null;
-
-      showToast(
-        "Both secret queens selected. Game started!",
-        "success"
-      );
-    }
-
-    selected = null;
-    legalTargets = [];
-
-    renderAll();
-
-    return true;
-  }
-
-  /* ==========================================================
-     15. MOVE NOTATION
-     ========================================================== */
-
-  function notationFor(state, move) {
-    const piece = state.board[move.fr][move.fc];
-
-    if (!piece) return "";
-
-    if (move.castle) {
-      return move.tc > move.fc
-        ? "O-O"
-        : "O-O-O";
-    }
-
-    const target = state.board[move.tr][move.tc];
-
-    const capture = target || move.enPassant;
-
-    const letter = piece.type === "p"
-      ? ""
-      : piece.type.toUpperCase();
-
-    const destination = squareName(
-      move.tr,
-      move.tc,
-      state.board.length
+  function showChessUnavailable() {
+    console.error(
+      "TwistChess: chess.js failed to load. Check your internet connection or include chess.js in index.html."
     );
 
-    let notation =
-      letter +
-      (capture ? "x" : "") +
-      destination;
-
-    if (
-      piece.type === "p" &&
-      capture
-    ) {
-      notation =
-        FILES[move.fc] +
-        "x" +
-        destination;
-    }
-
-    if (
-      piece.type === "p" &&
-      (
-        move.tr === 0 ||
-        move.tr === state.board.length - 1
-      )
-    ) {
-      notation += "=Q";
-    }
-
-    return notation;
-  }
-
-  /* ==========================================================
-     16. EXECUTING A MOVE
-     ========================================================== */
-
-  function executeMove(move) {
-    if (
-      !game ||
-      game.status !== "playing" ||
-      game.hiddenSetup
-    ) {
-      return;
-    }
-
-    const previous = cloneGame(game);
-
-    const movingPiece =
-      previous.board[move.fr][move.fc];
-
-    const captured =
-      previous.board[move.tr][move.tc] ||
-      move.enPassant;
-
-    let notation = notationFor(previous, move);
-
-    history.push(previous);
-
-    game = applyMove(
-      game,
-      move,
-      false
-    );
-
-    evaluateGame(game);
-
-    if (
-      game.status !== "finished" &&
-      isInCheck(game, game.turn)
-    ) {
-      notation += "+";
-    }
-
-    if (
-      game.status === "finished" &&
-      game.winner
-    ) {
-      notation += "#";
-    }
-
-    moveHistory.push({
-      notation,
-      color: movingPiece.color,
-      moveNumber: previous.fullmove
-    });
-
-    selected = null;
-    legalTargets = [];
-
-    if (game.status === "finished") {
-      playSound("win");
-
-      showToast(
-        game.result,
-        "success"
-      );
-    } else if (captured) {
-      playSound("capture");
-    } else if (isInCheck(game, game.turn)) {
-      playSound("check");
-    } else {
-      playSound("move");
-    }
-
-    renderAll();
-  }
-
-  /* ==========================================================
-     17. SQUARE INTERACTION
-     ========================================================== */
-
-  function onSquareClick(r, c) {
-    if (!game) return;
-
-    if (game.hiddenSetup) {
-      chooseHiddenQueen(r, c);
-      return;
-    }
-
-    if (game.status === "finished") {
-      return;
-    }
-
-    const piece = game.board[r][c];
-
-    if (selected) {
-      const move = legalTargets.find(
-        candidate =>
-          candidate.tr === r &&
-          candidate.tc === c
-      );
-
-      if (move) {
-        executeMove(move);
-        return;
-      }
-    }
-
-    if (
-      piece &&
-      piece.color === game.turn
-    ) {
-      if (
-        selected &&
-        selected.r === r &&
-        selected.c === c
-      ) {
-        selected = null;
-        legalTargets = [];
-      } else {
-        selected = { r, c };
-
-        legalTargets = legalMovesFor(
-          game,
-          r,
-          c
-        );
-
-        playSound("select");
-      }
-    } else {
-      selected = null;
-      legalTargets = [];
-    }
-
-    renderBoard();
-  }
-
-  /* ==========================================================
-     18. BOARD ORIENTATION
-     ========================================================== */
-
-  function displayedCoordinates(size) {
-    const coordinates = [];
-
-    for (let r = 0; r < size; r++) {
-      for (let c = 0; c < size; c++) {
-        coordinates.push({
-          r: flipped ? size - 1 - r : r,
-          c: flipped ? size - 1 - c : c,
-          displayR: r,
-          displayC: c
-        });
-      }
-    }
-
-    return coordinates;
-  }
-
-  /* ==========================================================
-     19. PIECE RENDERING
-     ========================================================== */
-
-  function pieceSymbol(piece) {
-    if (!piece) return "";
-
-    const style =
-      PIECES[settings.pieceStyle] ||
-      PIECES.classic;
-
-    return style[piece.color][piece.type];
-  }
-
-  function renderBoard() {
-    if (!game) return;
-
-    const element = $("board");
-
-    if (!element) return;
-
-    const board = game.board;
-    const size = board.length;
-
-    element.style.setProperty(
-      "--size",
-      size
-    );
-
-    element.className =
-      "board theme-" + settings.theme;
-
-    if (settings.animation) {
-      element.classList.add("animated");
-    }
-
-    if (game.status === "finished") {
-      element.classList.add("game-over");
-    }
-
-    element.style.setProperty(
-      "--piece-scale",
-      String(settings.pieceSize / 100)
-    );
-
-    const fragment = document.createDocumentFragment();
-
-    const coordinates = displayedCoordinates(size);
-
-    for (const position of coordinates) {
-      const {
-        r,
-        c,
-        displayR,
-        displayC
-      } = position;
-
-      const piece = board[r][c];
-
-      const square = document.createElement("button");
-
-      square.type = "button";
-
-      square.className = "square";
-
-      square.setAttribute(
-        "role",
-        "gridcell"
-      );
-
-      square.setAttribute(
-        "aria-label",
-        `${squareName(r, c, size)} ${
-          piece
-            ? colorName(piece.color) + " " + piece.type
-            : "empty"
-        }`
-      );
-
-      if ((r + c) % 2 === 1) {
-        square.classList.add("dark-square");
-      }
-
-      if (
-        selected &&
-        selected.r === r &&
-        selected.c === c
-      ) {
-        square.classList.add("selected");
-      }
-
-      if (
-        game.lastMove &&
-        (
-          (
-            game.lastMove.fr === r &&
-            game.lastMove.fc === c
-          ) ||
-          (
-            game.lastMove.tr === r &&
-            game.lastMove.tc === c
-          )
-        )
-      ) {
-        square.classList.add("lastmove");
-      }
-
-      const legal = legalTargets.some(
-        move =>
-          move.tr === r &&
-          move.tc === c
-      );
-
-      if (legal && settings.legal) {
-        square.classList.add(
-          piece ? "capture-target" : "legal"
-        );
-      }
-
-      if (
-        piece &&
-        piece.type === "k" &&
-        isInCheck(game, piece.color)
-      ) {
-        square.classList.add("in-check");
-      }
-
-      if (piece) {
-        const span = document.createElement("span");
-
-        span.className =
-          "piece " +
-          (piece.color === "w"
-            ? "white-piece"
-            : "black-piece");
-
-        span.textContent = pieceSymbol(piece);
-
-        square.appendChild(span);
-      }
-
-      if (settings.coords) {
-        if (displayC === 0) {
-          const rank = document.createElement("span");
-
-          rank.className = "coord";
-
-          rank.textContent = size - r;
-
-          square.appendChild(rank);
-        }
-
-        if (displayR === size - 1) {
-          const file = document.createElement("span");
-
-          file.className = "coord file";
-
-          file.textContent = FILES[c];
-
-          square.appendChild(file);
-        }
-      }
-
-      square.addEventListener(
-        "click",
-        () => onSquareClick(r, c)
-      );
-
-      fragment.appendChild(square);
-    }
-
-    element.replaceChildren(fragment);
-  }
-
-  /* ==========================================================
-     20. PLAYER STATUS
-     ========================================================== */
-
-  function renderPlayerStatus() {
-    if (!game) return;
-
-    const white = $("whiteStatus");
-    const black = $("blackStatus");
-
-    if (game.status === "finished") {
-      white.textContent = game.result;
-      black.textContent = game.result;
-      return;
-    }
-
-    white.textContent =
-      game.turn === "w"
-        ? "Your move"
-        : "Waiting";
-
-    black.textContent =
-      game.turn === "b"
-        ? "Your move"
-        : "Waiting";
-
-    if (isInCheck(game, "w")) {
-      white.textContent = "In check!";
-    }
-
-    if (isInCheck(game, "b")) {
-      black.textContent = "In check!";
+    const board = getBoardElement();
+
+    if (board && !state.chess) {
+      board.innerHTML = `
+        <div class="chess-error" role="alert">
+          <strong>Chess engine unavailable</strong>
+          <p>Connect to the internet or load chess.js locally, then reload.</p>
+          <button type="button" data-action="retry-chess">
+            Retry
+          </button>
+        </div>
+      `;
     }
   }
 
-  /* ==========================================================
-     21. CAPTURED PIECES
-     ========================================================== */
-
-  function renderCaptures() {
-    if (!game) return;
-
-    function capturedText(color) {
-      return game.captured[color]
-        .map(type => {
-          const opponent = other(color);
-
-          return PIECES.classic[opponent][type];
-        })
-        .join("");
-    }
-
-    $("whiteCaptures").textContent =
-      capturedText("w");
-
-    $("blackCaptures").textContent =
-      capturedText("b");
-  }
-
-  /* ==========================================================
-     22. TURN INDICATOR
-     ========================================================== */
-
-  function renderTurn() {
-    if (!game) return;
-
-    const turnLabel = $("turnLabel");
-
-    if (game.status === "finished") {
-      turnLabel.textContent =
-        game.winner
-          ? `${colorName(game.winner)} wins`
-          : "Draw";
-
-      return;
-    }
-
-    turnLabel.textContent =
-      game.turn === "w"
-        ? "♔ White"
-        : "♚ Black";
-  }
-
-  /* ==========================================================
-     23. HIDDEN QUEEN NOTICE
-     ========================================================== */
-
-  function renderSecretNotice() {
-    const notice = $("secretNotice");
-
-    if (!notice) return;
-
-    if (game.mode !== "hidden") {
-      notice.classList.add("hidden");
-      return;
-    }
-
-    notice.classList.remove("hidden");
-
-    if (game.hiddenSetup) {
-      notice.textContent =
-        `SECRET SETUP: ${colorName(game.hiddenSetup)} ` +
-        "must select a pawn to become a hidden queen.";
-    } else {
-      notice.textContent =
-        "Hidden Queen active. Secret queens look like pawns.";
-    }
-  }
-
-  /* ==========================================================
-     24. MOVE HISTORY
-     ========================================================== */
-
-  function renderHistory() {
-    const element = $("history");
-
-    if (!element) return;
-
-    element.replaceChildren();
-
-    if (moveHistory.length === 0) {
-      const empty = document.createElement("div");
-
-      empty.className = "empty-history";
-
-      empty.textContent =
-        "Your story begins with the first move.";
-
-      element.appendChild(empty);
-
-      return;
-    }
-
-    const rows = new Map();
-
-    for (const move of moveHistory) {
-      if (!rows.has(move.moveNumber)) {
-        rows.set(move.moveNumber, {
-          white: "",
-          black: ""
-        });
-      }
-
-      const row = rows.get(move.moveNumber);
-
-      if (move.color === "w") {
-        row.white = move.notation;
-      } else {
-        row.black = move.notation;
-      }
-    }
-
-    for (const [number, moves] of rows) {
-      const row = document.createElement("div");
-
-      row.className = "move-row";
-
-      const numberSpan = document.createElement("span");
-      const whiteSpan = document.createElement("span");
-      const blackSpan = document.createElement("span");
-
-      numberSpan.textContent = number + ".";
-      whiteSpan.textContent = moves.white;
-      blackSpan.textContent = moves.black;
-
-      row.append(
-        numberSpan,
-        whiteSpan,
-        blackSpan
-      );
-
-      element.appendChild(row);
-    }
-
-    element.scrollTop = element.scrollHeight;
-  }
-
-  /* ==========================================================
-     25. COMPLETE GAME RENDER
-     ========================================================== */
-
-  function renderAll() {
-    renderBoard();
-    renderPlayerStatus();
-    renderCaptures();
-    renderTurn();
-    renderSecretNotice();
-    renderHistory();
-  }
-
-  /* ==========================================================
-     26. UNDO
-     ========================================================== */
-
-  function undoMove() {
-    if (history.length === 0) {
-      showToast(
-        "No moves to undo.",
-        "error"
-      );
-      return;
-    }
-
-    game = history.pop();
-
-    moveHistory.pop();
-
-    selected = null;
-    legalTargets = [];
-
-    renderAll();
-
-    playSound("undo");
-  }
-
-  /* ==========================================================
-     27. SOUND ENGINE
-     ========================================================== */
-
-  function getAudioContext() {
-    if (!settings.sound) return null;
+  function initializeChess() {
+    if (typeof window.Chess !== "function") return;
 
     try {
-      if (!audioContext) {
-        const Context =
-          window.AudioContext ||
-          window.webkitAudioContext;
+      state.chess = new window.Chess();
+      state.selectedSquare = null;
+      state.legalTargets = [];
+      state.gameOver = false;
+      state.gameStarted = false;
+      state.gameResult = null;
 
-        if (!Context) return null;
+      initializeTimers();
+      renderBoard();
+      renderMoveHistory();
+      updateGameStatus();
+      updateGameControls();
+    } catch (error) {
+      console.error("TwistChess: Chess initialization failed.", error);
+      announce("Could not start a chess game.");
+    }
+  }
 
-        audioContext = new Context();
-      }
+  /* -------------------- BOARD ELEMENTS -------------------- */
 
-      if (audioContext.state === "suspended") {
-        audioContext.resume().catch(() => {});
-      }
+  function getBoardElement() {
+    return firstExisting([
+      "#chessboard",
+      "#board",
+      ".chessboard",
+      ".chess-board",
+      ".board",
+      "[data-chessboard]"
+    ]);
+  }
 
-      return audioContext;
+  function getMoveListElement() {
+    return firstExisting([
+      "#moveHistory",
+      "#moveList",
+      ".move-history",
+      ".move-list",
+      "[data-move-history]"
+    ]);
+  }
+
+  function squareName(file, rank) {
+    return "abcdefgh"[file] + String(rank + 1);
+  }
+
+  function getPieceAt(square) {
+    if (!state.chess) return null;
+
+    try {
+      return state.chess.get(square);
     } catch {
       return null;
     }
   }
 
-  function tone(
-    frequency,
-    duration,
-    type = "sine",
-    volume = 0.06,
-    delay = 0
-  ) {
-    const context = getAudioContext();
-
-    if (!context) return;
-
-    const oscillator = context.createOscillator();
-    const gain = context.createGain();
-
-    const now = context.currentTime + delay;
-
-    oscillator.type = type;
-
-    oscillator.frequency.setValueAtTime(
-      frequency,
-      now
-    );
-
-    gain.gain.setValueAtTime(
-      0.0001,
-      now
-    );
-
-    gain.gain.exponentialRampToValueAtTime(
-      Math.max(volume, 0.0002),
-      now + 0.008
-    );
-
-    gain.gain.exponentialRampToValueAtTime(
-      0.0001,
-      now + duration
-    );
-
-    oscillator.connect(gain);
-    gain.connect(context.destination);
-
-    oscillator.start(now);
-    oscillator.stop(now + duration + 0.02);
+  function isPlayersPiece(piece) {
+    return piece && piece.color === state.chess.turn();
   }
 
-  function playSound(name) {
-    if (!settings.sound) return;
+  function getPieceCode(piece) {
+    if (!piece) return null;
 
-    switch (name) {
-      case "select":
-        tone(540, 0.045, "sine", 0.018);
-        break;
-
-      case "move":
-        tone(340, 0.08, "triangle", 0.045);
-        tone(440, 0.07, "sine", 0.02, 0.025);
-        break;
-
-      case "capture":
-        tone(180, 0.15, "sawtooth", 0.035);
-        tone(110, 0.12, "triangle", 0.04, 0.025);
-        break;
-
-      case "check":
-        tone(650, 0.12, "square", 0.025);
-        tone(780, 0.12, "sine", 0.04, 0.1);
-        break;
-
-      case "win":
-        tone(440, 0.18, "sine", 0.05);
-        tone(550, 0.18, "sine", 0.05, 0.15);
-        tone(660, 0.25, "sine", 0.05, 0.3);
-        break;
-
-      case "undo":
-        tone(400, 0.07, "triangle", 0.03);
-        tone(300, 0.09, "triangle", 0.03, 0.05);
-        break;
-
-      case "start":
-        tone(400, 0.09, "sine", 0.03);
-        tone(600, 0.13, "sine", 0.04, 0.09);
-        break;
-    }
+    const color = piece.color === "w" ? "w" : "b";
+    return color + piece.type.toUpperCase();
   }
 
-  /* ==========================================================
-     28. TOAST NOTIFICATIONS
-     ========================================================== */
+  function createPieceElement(piece, square) {
+    const code = getPieceCode(piece);
+    const pieceElement = document.createElement("div");
 
-  function showToast(message, type = "normal") {
-    let container = document.querySelector(
-      ".toast-container"
+    pieceElement.className =
+      `piece chess-piece piece-${code} ` +
+      `piece-${piece.color === "w" ? "white" : "black"}`;
+
+    pieceElement.dataset.piece = code;
+    pieceElement.dataset.square = square;
+    pieceElement.draggable = !state.gameOver;
+
+    pieceElement.setAttribute(
+      "aria-label",
+      `${piece.color === "w" ? "White" : "Black"} ${piece.type}`
     );
 
-    if (!container) {
-      container = document.createElement("div");
+    const image = document.createElement("img");
 
-      container.className = "toast-container";
+    image.src = CONFIG.pieceImageBase + code + ".png";
+    image.alt = "";
+    image.draggable = false;
+    image.className = "piece-image";
 
-      document.body.appendChild(container);
-    }
+    image.onerror = () => {
+      image.remove();
 
-    const toast = document.createElement("div");
-
-    toast.className = "toast";
-
-    if (type === "success" || type === "error") {
-      toast.classList.add(type);
-    }
-
-    toast.textContent = message;
-
-    container.appendChild(toast);
-
-    setTimeout(() => {
-      toast.remove();
-
-      if (!container.children.length) {
-        container.remove();
-      }
-    }, 3200);
-  }
-
-  /* ==========================================================
-     29. NAVIGATION
-     ========================================================== */
-
-  const PAGE_CONTENT = {
-    play: {
-      title: "Make your next move",
-      emphasis: "legendary.",
-      subtitle:
-        "Classic strategy. Unpredictable rules. Endless rematches."
-    },
-    modes: {
-      title: "Choose your",
-      emphasis: "chaos.",
-      subtitle:
-        "Explore experimental chess variants and unexpected rules."
-    },
-    settings: {
-      title: "Make it",
-      emphasis: "yours.",
-      subtitle:
-        "Customize your chessboard, pieces, sounds and controls."
-    }
-  };
-
-  function showView(name) {
-    const views = {
-      play: $("playView"),
-      modes: $("modesView"),
-      settings: $("settingsView")
+      const symbol = document.createElement("span");
+      symbol.className = "piece-symbol";
+      symbol.textContent = PIECE_SYMBOLS[code] || "?";
+      pieceElement.appendChild(symbol);
     };
 
-    for (const [key, element] of Object.entries(views)) {
-      if (!element) continue;
+    pieceElement.appendChild(image);
 
-      element.classList.toggle(
-        "hidden",
-        key !== name
-      );
+    return pieceElement;
+  }
+
+  function createSquare(file, rank) {
+    const name = squareName(file, rank);
+    const piece = getPieceAt(name);
+    const square = document.createElement("div");
+
+    const isLight = (file + rank) % 2 === 1;
+
+    square.className =
+      "square chess-square " +
+      (isLight ? "light-square" : "dark-square");
+
+    square.dataset.square = name;
+    square.setAttribute("role", "button");
+    square.setAttribute("tabindex", "0");
+    square.setAttribute("aria-label", name);
+
+    if (piece) {
+      square.classList.add("has-piece");
+      square.appendChild(createPieceElement(piece, name));
     }
 
-    document.querySelectorAll(".nav").forEach(button => {
-      button.classList.toggle(
-        "active",
-        button.dataset.view === name
-      );
+    if (state.selectedSquare === name) {
+      square.classList.add("selected", "is-selected");
+    }
+
+    if (state.legalTargets.includes(name)) {
+      square.classList.add("legal-target", "possible-move");
+
+      if (piece) {
+        square.classList.add("capture-target");
+      }
+    }
+
+    if (
+      state.chess &&
+      typeof state.chess.isCheck === "function" &&
+      piece &&
+      piece.type === "k" &&
+      piece.color === state.chess.turn() &&
+      state.chess.isCheck()
+    ) {
+      square.classList.add("king-in-check");
+    }
+
+    if (appData.preferences.coordinates) {
+      if (file === 0) {
+        const rankLabel = document.createElement("span");
+        rankLabel.className = "board-coordinate rank-coordinate";
+        rankLabel.textContent = String(rank + 1);
+        square.appendChild(rankLabel);
+      }
+
+      if (rank === 0) {
+        const fileLabel = document.createElement("span");
+        fileLabel.className = "board-coordinate file-coordinate";
+        fileLabel.textContent = "abcdefgh"[file];
+        square.appendChild(fileLabel);
+      }
+    }
+
+    return square;
+  }
+
+  function renderBoard() {
+    const board = getBoardElement();
+
+    if (!board || !state.chess) return;
+
+    board.innerHTML = "";
+    board.classList.add("chessboard");
+    board.setAttribute("role", "grid");
+    board.setAttribute("aria-label", "Chess board");
+
+    const ranks = state.boardFlipped
+      ? [0, 1, 2, 3, 4, 5, 6, 7]
+      : [7, 6, 5, 4, 3, 2, 1, 0];
+
+    const files = state.boardFlipped
+      ? [7, 6, 5, 4, 3, 2, 1, 0]
+      : [0, 1, 2, 3, 4, 5, 6, 7];
+
+    ranks.forEach((rank) => {
+      files.forEach((file) => {
+        board.appendChild(createSquare(file, rank));
+      });
     });
 
-    const page = PAGE_CONTENT[name];
+    board.classList.toggle("board-flipped", state.boardFlipped);
+    board.dataset.boardTheme = appData.preferences.boardTheme;
+    board.dataset.theme = appData.preferences.boardTheme;
 
-    if (page) {
-      const title = $("pageTitle");
+    updateCapturedPieces();
+  }
 
-      title.replaceChildren();
+  /* -------------------- MOVE SELECTION -------------------- */
 
-      title.append(
-        document.createTextNode(page.title + " ")
-      );
+  function getLegalMoves(square) {
+    if (!state.chess) return [];
 
-      const emphasis = document.createElement("em");
-
-      emphasis.textContent = page.emphasis;
-
-      title.appendChild(emphasis);
-
-      $("pageSubtitle").textContent = page.subtitle;
+    try {
+      return state.chess.moves({
+        square,
+        verbose: true
+      });
+    } catch {
+      return [];
     }
   }
 
-  /* ==========================================================
-     30. GAME MODE CARDS
-     ========================================================== */
+  function selectSquare(square) {
+    if (!state.chess || state.gameOver) return;
 
-  function renderModeCards() {
-    const grid = $("modeGrid");
+    const piece = getPieceAt(square);
 
-    if (!grid) return;
+    if (state.selectedSquare === square) {
+      clearSelection();
+      return;
+    }
 
-    grid.replaceChildren();
+    if (state.selectedSquare) {
+      const existingTarget = state.legalTargets.includes(square);
 
-    $("modeCount").textContent =
-      `${MODES.length} MODES AVAILABLE`;
+      if (existingTarget) {
+        attemptMove(state.selectedSquare, square);
+        return;
+      }
+    }
 
-    for (const mode of MODES) {
-      const card = document.createElement("article");
+    if (isPlayersPiece(piece)) {
+      state.selectedSquare = square;
 
-      card.className = "mode-card";
+      state.legalTargets = getLegalMoves(square).map(
+        (move) => move.to
+      );
 
-      const icon = document.createElement("div");
-      icon.className = "mode-emoji";
-      icon.textContent = mode.icon;
+      renderBoard();
+      return;
+    }
 
-      const tag = document.createElement("div");
-      tag.className = "mode-tag";
-      tag.textContent = mode.tag;
+    clearSelection();
+  }
 
-      const title = document.createElement("h3");
-      title.textContent = mode.name;
+  function clearSelection() {
+    state.selectedSquare = null;
+    state.legalTargets = [];
+    renderBoard();
+  }
 
-      const description = document.createElement("p");
-      description.textContent = mode.description;
+  function attemptMove(from, to, promotion = "q") {
+    if (!state.chess || state.gameOver) return false;
 
-      const button = document.createElement("button");
-      button.type = "button";
-      button.textContent = "Play this mode";
+    const movingPiece = getPieceAt(from);
 
-      button.addEventListener("click", () => {
-        newGame(mode.id);
+    if (!movingPiece) return false;
 
-        showToast(
-          `${mode.name} started!`,
-          "success"
+    const isPromotion =
+      movingPiece.type === "p" &&
+      ((movingPiece.color === "w" && to.endsWith("8")) ||
+        (movingPiece.color === "b" && to.endsWith("1")));
+
+    if (isPromotion && !promotion) {
+      state.promotionPending = { from, to };
+      showPromotionDialog();
+      return false;
+    }
+
+    const previousTurn = state.chess.turn();
+    let move;
+
+    try {
+      move = state.chess.move({
+        from,
+        to,
+        promotion: promotion || "q"
+      });
+    } catch {
+      move = null;
+    }
+
+    if (!move) {
+      announce("That move is not legal.");
+      return false;
+    }
+
+    state.selectedSquare = null;
+    state.legalTargets = [];
+
+    if (!state.gameStarted) {
+      state.gameStarted = true;
+      state.lastTick = Date.now();
+      startTimerLoop();
+    }
+
+    playSound(move.captured ? "capture" : "move");
+
+    state.currentMove = move;
+
+    renderBoard();
+    renderMoveHistory();
+    updateGameStatus();
+    updateCapturedPieces();
+    updateGameControls();
+    updateMoveIndicators(move);
+
+    if (state.chess.isGameOver()) {
+      finishGame();
+    } else {
+      updateTurnIndicator(previousTurn);
+    }
+
+    return true;
+  }
+
+  function updateMoveIndicators(move) {
+    if (!move) return;
+
+    const board = getBoardElement();
+    if (!board) return;
+
+    $$(".last-move, .last-move-from, .last-move-to", board)
+      .forEach((element) => {
+        element.classList.remove(
+          "last-move",
+          "last-move-from",
+          "last-move-to"
         );
       });
 
-      card.append(
-        icon,
-        title,
-        description,
-        tag,
-        button
-      );
+    const fromSquare = $(
+      `[data-square="${move.from}"]`,
+      board
+    );
 
-      grid.appendChild(card);
+    const toSquare = $(
+      `[data-square="${move.to}"]`,
+      board
+    );
+
+    fromSquare?.classList.add("last-move", "last-move-from");
+    toSquare?.classList.add("last-move", "last-move-to");
+  }
+
+  /* -------------------- PROMOTION -------------------- */
+
+  function showPromotionDialog() {
+    const dialog = firstExisting([
+      "#promotionDialog",
+      ".promotion-dialog",
+      "[data-promotion-dialog]"
+    ]);
+
+    if (!dialog) {
+      const pending = state.promotionPending;
+
+      if (pending) {
+        attemptMove(pending.from, pending.to, "q");
+        state.promotionPending = null;
+      }
+
+      return;
+    }
+
+    setVisible(dialog, true);
+    dialog.classList.add("is-open");
+  }
+
+  function choosePromotion(pieceType) {
+    const pending = state.promotionPending;
+    if (!pending) return;
+
+    state.promotionPending = null;
+
+    const dialog = firstExisting([
+      "#promotionDialog",
+      ".promotion-dialog",
+      "[data-promotion-dialog]"
+    ]);
+
+    if (dialog) {
+      setVisible(dialog, false);
+      dialog.classList.remove("is-open");
+    }
+
+    attemptMove(pending.from, pending.to, pieceType);
+  }
+
+  /* -------------------- MOVE HISTORY -------------------- */
+
+  function renderMoveHistory() {
+    const list = getMoveListElement();
+    if (!list || !state.chess) return;
+
+    let history = [];
+
+    try {
+      history = state.chess.history();
+    } catch {
+      history = [];
+    }
+
+    list.innerHTML = "";
+
+    if (!history.length) {
+      const empty = document.createElement("div");
+      empty.className = "empty-moves empty-state";
+      empty.textContent = "Your moves will appear here.";
+      list.appendChild(empty);
+      return;
+    }
+
+    const table = document.createElement("div");
+    table.className = "move-history-table";
+
+    for (let index = 0; index < history.length; index += 2) {
+      const row = document.createElement("div");
+      row.className = "move-row";
+
+      const number = document.createElement("span");
+      number.className = "move-number";
+      number.textContent = `${Math.floor(index / 2) + 1}.`;
+
+      const whiteMove = document.createElement("span");
+      whiteMove.className = "move-white";
+      whiteMove.textContent = history[index];
+
+      const blackMove = document.createElement("span");
+      blackMove.className = "move-black";
+      blackMove.textContent = history[index + 1] || "…";
+
+      row.append(number, whiteMove, blackMove);
+      table.appendChild(row);
+    }
+
+    list.appendChild(table);
+
+    const lastMove = list.querySelector(".move-row:last-child");
+
+    if (lastMove) {
+      lastMove.classList.add("current-move");
+    }
+
+    list.scrollTop = list.scrollHeight;
+  }
+
+  /* -------------------- CAPTURED PIECES -------------------- */
+
+  function updateCapturedPieces() {
+    if (!state.chess) return;
+
+    let history = [];
+
+    try {
+      history = state.chess.history({ verbose: true });
+    } catch {
+      return;
+    }
+
+    const capturedWhite = [];
+    const capturedBlack = [];
+
+    history.forEach((move) => {
+      if (!move.captured) return;
+
+      const capturedCode =
+        (move.color === "w" ? "b" : "w") +
+        move.captured.toUpperCase();
+
+      if (move.color === "w") {
+        capturedBlack.push(capturedCode);
+      } else {
+        capturedWhite.push(capturedCode);
+      }
+    });
+
+    renderCapturedGroup(
+      ["#capturedWhite", ".captured-white", "[data-captured='white']"],
+      capturedWhite
+    );
+
+    renderCapturedGroup(
+      ["#capturedBlack", ".captured-black", "[data-captured='black']"],
+      capturedBlack
+    );
+  }
+
+  function renderCapturedGroup(selectors, pieces) {
+    const container = firstExisting(selectors);
+    if (!container) return;
+
+    container.innerHTML = "";
+
+    pieces.forEach((code) => {
+      const image = document.createElement("img");
+
+      image.src = CONFIG.pieceImageBase + code + ".png";
+      image.alt = code;
+      image.className = "captured-piece";
+      image.loading = "lazy";
+
+      image.onerror = () => {
+        image.remove();
+
+        const symbol = document.createElement("span");
+        symbol.className = "captured-piece-symbol";
+        symbol.textContent = PIECE_SYMBOLS[code] || "?";
+        container.appendChild(symbol);
+      };
+
+      container.appendChild(image);
+    });
+  }
+
+  /* -------------------- GAME STATUS -------------------- */
+
+  function updateGameStatus() {
+    if (!state.chess) return;
+
+    const turn = state.chess.turn() === "w" ? "White" : "Black";
+    let status = `${turn} to move`;
+
+    if (state.chess.isCheck()) {
+      status = `${turn} is in check`;
+    }
+
+    if (state.chess.isCheckmate()) {
+      status = `Checkmate — ${turn === "White" ? "Black" : "White"} wins`;
+    } else if (state.chess.isDraw()) {
+      status = "Draw";
+    } else if (state.chess.isStalemate()) {
+      status = "Stalemate";
+    }
+
+    setText(
+      [
+        "#gameStatus",
+        "#turnIndicator",
+        ".game-status",
+        ".turn-indicator",
+        "[data-game-status]"
+      ],
+      status
+    );
+
+    setText(
+      ["#activePlayer", ".active-player"],
+      turn
+    );
+
+    document.body.dataset.turn = turn.toLowerCase();
+  }
+
+  function updateTurnIndicator(previousTurn) {
+    const currentTurn = state.chess.turn();
+
+    if (previousTurn !== currentTurn) {
+      const indicator = firstExisting([
+        "#turnIndicator",
+        ".turn-indicator",
+        ".game-status"
+      ]);
+
+      if (indicator) {
+        indicator.classList.remove("turn-change");
+        void indicator.offsetWidth;
+        indicator.classList.add("turn-change");
+      }
     }
   }
 
-  /* ==========================================================
-     31. BOARD THEME CONTROLS
-     ========================================================== */
+  function updateGameControls() {
+    const disabled = !state.chess || state.gameOver;
 
-  function renderThemeChoices() {
-    const container = $("themeChoices");
+    allExisting([
+      "#undoMove",
+      "[data-action='undo']",
+      ".undo-move"
+    ]).forEach((element) => {
+      element.disabled =
+        !state.chess || state.chess.history().length === 0;
+    });
+
+    allExisting([
+      "#resignGame",
+      "[data-action='resign']",
+      ".resign-game"
+    ]).forEach((element) => {
+      element.disabled = disabled;
+    });
+  }
+
+  /* -------------------- GAME TIMERS -------------------- */
+
+  function initializeTimers() {
+    stopTimerLoop();
+
+    const mode = MODES[state.currentMode] || MODES.rapid;
+
+    appData.currentGame = {
+      ...(appData.currentGame || {}),
+      mode: state.currentMode,
+      whiteTime: mode.seconds,
+      blackTime: mode.seconds
+    };
+
+    updateTimerDisplay();
+  }
+
+  function startTimerLoop() {
+    if (state.timerInterval || state.gameOver) return;
+
+    state.lastTick = Date.now();
+
+    state.timerInterval = setInterval(() => {
+      if (!state.gameStarted || state.gameOver || !state.chess) {
+        return;
+      }
+
+      const now = Date.now();
+      const elapsed = Math.max(
+        0,
+        Math.floor((now - state.lastTick) / 1000)
+      );
+
+      if (elapsed < 1) return;
+
+      state.lastTick = now;
+
+      const mode = MODES[state.currentMode] || MODES.rapid;
+
+      if (mode.seconds === 0) return;
+
+      const key =
+        state.chess.turn() === "w" ? "whiteTime" : "blackTime";
+
+      appData.currentGame[key] = Math.max(
+        0,
+        (appData.currentGame[key] ?? mode.seconds) - elapsed
+      );
+
+      updateTimerDisplay();
+
+      if (appData.currentGame[key] <= 0) {
+        finishOnTimeOut(state.chess.turn());
+      }
+    }, 250);
+  }
+
+  function stopTimerLoop() {
+    if (state.timerInterval) {
+      clearInterval(state.timerInterval);
+      state.timerInterval = null;
+    }
+  }
+
+  function updateTimerDisplay() {
+    const game = appData.currentGame || {};
+    const mode = MODES[state.currentMode] || MODES.rapid;
+
+    const whiteTime =
+      mode.seconds === 0 ? null : game.whiteTime ?? mode.seconds;
+
+    const blackTime =
+      mode.seconds === 0 ? null : game.blackTime ?? mode.seconds;
+
+    setText(
+      ["#whiteTimer", ".white-timer", "[data-timer='white']"],
+      whiteTime === null ? "∞" : formatDuration(whiteTime)
+    );
+
+    setText(
+      ["#blackTimer", ".black-timer", "[data-timer='black']"],
+      blackTime === null ? "∞" : formatDuration(blackTime)
+    );
+
+    allExisting(["#whiteTimer", ".white-timer"])
+      .forEach((element) => {
+        element.classList.toggle(
+          "timer-low",
+          whiteTime !== null && whiteTime <= 10
+        );
+      });
+
+    allExisting(["#blackTimer", ".black-timer"])
+      .forEach((element) => {
+        element.classList.toggle(
+          "timer-low",
+          blackTime !== null && blackTime <= 10
+        );
+      });
+  }
+
+  function finishOnTimeOut(flaggedColor) {
+    if (state.gameOver) return;
+
+    const winner = flaggedColor === "w" ? "Black" : "White";
+
+    finishGame({
+      result: flaggedColor === "w" ? "0-1" : "1-0",
+      message: `${winner} wins on time`
+    });
+  }
+
+  /* -------------------- GAME COMPLETION -------------------- */
+
+  function finishGame(customResult = null) {
+    if (!state.chess || state.gameOver) return;
+
+    state.gameOver = true;
+    state.gameStarted = false;
+    stopTimerLoop();
+
+    let result = customResult?.result || "*";
+    let message = customResult?.message || "Game over";
+
+    if (!customResult) {
+      if (state.chess.isCheckmate()) {
+        const winner = state.chess.turn() === "w" ? "Black" : "White";
+        result = winner === "White" ? "1-0" : "0-1";
+        message = `Checkmate — ${winner} wins`;
+      } else if (state.chess.isStalemate()) {
+        result = "1/2-1/2";
+        message = "Draw by stalemate";
+      } else if (state.chess.isThreefoldRepetition()) {
+        result = "1/2-1/2";
+        message = "Draw by repetition";
+      } else if (state.chess.isInsufficientMaterial()) {
+        result = "1/2-1/2";
+        message = "Draw by insufficient material";
+      } else if (state.chess.isDraw()) {
+        result = "1/2-1/2";
+        message = "Draw";
+      }
+    }
+
+    state.gameResult = result;
+
+    recordFinishedGame(result, message);
+
+    renderBoard();
+    updateGameStatus();
+    updateGameControls();
+    updateTimerDisplay();
+    showGameOverDialog(message, result);
+
+    saveData();
+  }
+
+  function recordFinishedGame(result, message) {
+    const playerColor = "w";
+
+    let outcome = "draw";
+
+    if (result === "1-0") {
+      outcome = playerColor === "w" ? "win" : "loss";
+    } else if (result === "0-1") {
+      outcome = playerColor === "b" ? "win" : "loss";
+    }
+
+    const record = {
+      id: randomId(),
+      date: new Date().toISOString(),
+      mode: state.currentMode,
+      result,
+      outcome,
+      message,
+      pgn: state.chess ? state.chess.pgn() : "",
+      moves: state.chess ? state.chess.history().length : 0
+    };
+
+    appData.history.unshift(record);
+    appData.history = appData.history.slice(0, 100);
+
+    appData.stats.gamesPlayed += 1;
+
+    if (outcome === "win") {
+      appData.stats.wins += 1;
+      appData.stats.rating += 8;
+    } else if (outcome === "loss") {
+      appData.stats.losses += 1;
+      appData.stats.rating = Math.max(100, appData.stats.rating - 8);
+    } else {
+      appData.stats.draws += 1;
+    }
+
+    appData.profile.rating = appData.stats.rating;
+
+    renderStats();
+    renderGameHistory();
+  }
+
+  function showGameOverDialog(message, result) {
+    const dialog = firstExisting([
+      "#gameOverDialog",
+      ".game-over-dialog",
+      "[data-game-over-dialog]"
+    ]);
+
+    setText(
+      ["#gameOverMessage", ".game-over-message"],
+      message
+    );
+
+    setText(["#gameOverResult", ".game-over-result"], result);
+
+    if (dialog) {
+      setVisible(dialog, true);
+      dialog.classList.add("is-open");
+    } else {
+      announce(message);
+    }
+  }
+
+  /* -------------------- NEW GAME / RESET -------------------- */
+
+  function startNewGame(mode = state.currentMode) {
+    state.currentMode = MODES[mode] ? mode : CONFIG.defaultMode;
+
+    if (state.chess && state.gameStarted && !state.gameOver) {
+      const confirmReset = window.confirm(
+        "Start a new game? The current game will be abandoned."
+      );
+
+      if (!confirmReset) return;
+    }
+
+    stopTimerLoop();
+
+    state.chess = new window.Chess();
+    state.selectedSquare = null;
+    state.legalTargets = [];
+    state.gameStarted = false;
+    state.gameOver = false;
+    state.gameResult = null;
+    state.boardFlipped = false;
+    state.currentMove = null;
+
+    const dialog = firstExisting([
+      "#gameOverDialog",
+      ".game-over-dialog",
+      "[data-game-over-dialog]"
+    ]);
+
+    if (dialog) {
+      setVisible(dialog, false);
+      dialog.classList.remove("is-open");
+    }
+
+    const promotionDialog = firstExisting([
+      "#promotionDialog",
+      ".promotion-dialog",
+      "[data-promotion-dialog]"
+    ]);
+
+    if (promotionDialog) {
+      setVisible(promotionDialog, false);
+      promotionDialog.classList.remove("is-open");
+    }
+
+    initializeTimers();
+    renderBoard();
+    renderMoveHistory();
+    updateGameStatus();
+    updateGameControls();
+    updateCapturedPieces();
+
+    navigateTo("game");
+  }
+
+  function undoMove() {
+    if (!state.chess || state.gameOver) return;
+
+    let undone;
+
+    try {
+      undone = state.chess.undo();
+    } catch {
+      undone = null;
+    }
+
+    if (!undone) {
+      announce("There are no moves to undo.");
+      return;
+    }
+
+    state.selectedSquare = null;
+    state.legalTargets = [];
+
+    renderBoard();
+    renderMoveHistory();
+    updateGameStatus();
+    updateCapturedPieces();
+    updateGameControls();
+
+    announce("Last move undone.");
+  }
+
+  function resignGame() {
+    if (!state.chess || state.gameOver) return;
+
+    const confirmResign =
+      appData.preferences.confirmResign !== false;
+
+    if (
+      confirmResign &&
+      !window.confirm("Are you sure you want to resign?")
+    ) {
+      return;
+    }
+
+    const result =
+      state.chess.turn() === "w" ? "0-1" : "1-0";
+
+    finishGame({
+      result,
+      message: "You resigned"
+    });
+  }
+
+  function flipBoard() {
+    state.boardFlipped = !state.boardFlipped;
+    renderBoard();
+
+    allExisting(["#flipBoard", ".flip-board"])
+      .forEach((button) => {
+        button.setAttribute(
+          "aria-pressed",
+          String(state.boardFlipped)
+        );
+      });
+  }
+
+  /* -------------------- NAVIGATION -------------------- */
+
+  function normalizeScreen(screen) {
+    const aliases = {
+      home: "dashboard",
+      dashboard: "dashboard",
+      play: "game",
+      game: "game",
+      chess: "game",
+      profile: "profile",
+      friends: "friends",
+      history: "history",
+      settings: "settings",
+      leaderboard: "leaderboard",
+      stats: "stats",
+      login: "auth",
+      signup: "auth",
+      register: "auth"
+    };
+
+    return aliases[String(screen || "").toLowerCase()] || "dashboard";
+  }
+
+  function navigateTo(screen) {
+    const target = normalizeScreen(screen);
+    state.currentScreen = target;
+
+    const pageSelectors = [
+      ".page",
+      ".app-page",
+      "[data-page]",
+      "main > section[id$='Page']"
+    ];
+
+    allExisting(pageSelectors).forEach((page) => {
+      const raw =
+        page.dataset.page ||
+        page.dataset.screen ||
+        page.id.replace(/Page$/, "").replace(/-/g, "");
+
+      const pageName = normalizeScreen(raw);
+
+      const isTarget = pageName === target;
+
+      page.classList.toggle("active", isTarget);
+      page.classList.toggle("is-active", isTarget);
+      page.hidden = !isTarget;
+      page.setAttribute("aria-hidden", String(!isTarget));
+    });
+
+    allExisting([
+      ".nav-item",
+      ".sidebar-link",
+      "[data-nav]",
+      "[data-page-target]"
+    ]).forEach((link) => {
+      const raw =
+        link.dataset.nav ||
+        link.dataset.pageTarget ||
+        link.dataset.target ||
+        link.getAttribute("href")?.replace("#", "");
+
+      const active = normalizeScreen(raw) === target;
+
+      link.classList.toggle("active", active);
+      link.classList.toggle("is-active", active);
+
+      if (active) {
+        link.setAttribute("aria-current", "page");
+      } else {
+        link.removeAttribute("aria-current");
+      }
+    });
+
+    const sidebar = firstExisting([
+      "#sidebar",
+      ".sidebar",
+      ".app-sidebar"
+    ]);
+
+    sidebar?.classList.remove("open", "is-open");
+
+    if (target === "game") {
+      renderBoard();
+      renderMoveHistory();
+      updateGameStatus();
+      updateTimerDisplay();
+    } else if (target === "profile") {
+      renderProfile();
+      renderStats();
+    } else if (target === "friends") {
+      renderFriends();
+    } else if (target === "history") {
+      renderGameHistory();
+    } else if (target === "settings") {
+      renderSettings();
+    }
+
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth"
+    });
+
+    document.dispatchEvent(
+      new CustomEvent("twistchess:navigate", {
+        detail: { screen: target }
+      })
+    );
+  }
+
+  function toggleSidebar() {
+    const sidebar = firstExisting([
+      "#sidebar",
+      ".sidebar",
+      ".app-sidebar"
+    ]);
+
+    if (!sidebar) return;
+
+    sidebar.classList.toggle("open");
+    sidebar.classList.toggle("is-open");
+  }
+
+  /* -------------------- AUTHENTICATION DEMO -------------------- */
+
+  function showAuth(mode = "login") {
+    const authScreen = firstExisting([
+      "#authScreen",
+      ".auth-screen",
+      "[data-screen='auth']"
+    ]);
+
+    const appShell = firstExisting([
+      "#app",
+      "#appShell",
+      ".app-shell"
+    ]);
+
+    if (authScreen) {
+      setVisible(authScreen, true);
+      authScreen.classList.add("active");
+    }
+
+    if (appShell) {
+      setVisible(appShell, false);
+    }
+
+    switchAuthMode(mode);
+  }
+
+  function hideAuth() {
+    const authScreen = firstExisting([
+      "#authScreen",
+      ".auth-screen",
+      "[data-screen='auth']"
+    ]);
+
+    const appShell = firstExisting([
+      "#app",
+      "#appShell",
+      ".app-shell"
+    ]);
+
+    if (authScreen) {
+      setVisible(authScreen, false);
+      authScreen.classList.remove("active");
+    }
+
+    if (appShell) {
+      setVisible(appShell, true);
+    }
+  }
+
+  function switchAuthMode(mode) {
+    const normalized = mode === "signup" ? "signup" : "login";
+
+    allExisting([
+      "[data-auth-mode]",
+      ".auth-tab",
+      ".auth-mode-button"
+    ]).forEach((button) => {
+      const active =
+        button.dataset.authMode === normalized ||
+        button.dataset.mode === normalized;
+
+      button.classList.toggle("active", active);
+      button.classList.toggle("is-active", active);
+    });
+
+    allExisting([
+      "#loginForm",
+      ".login-form",
+      "[data-auth-form='login']"
+    ]).forEach((form) => {
+      setVisible(form, normalized === "login");
+    });
+
+    allExisting([
+      "#signupForm",
+      ".signup-form",
+      "[data-auth-form='signup']"
+    ]).forEach((form) => {
+      setVisible(form, normalized === "signup");
+    });
+
+    setText(
+      ["#authTitle", ".auth-title"],
+      normalized === "signup" ? "Create your account" : "Welcome back"
+    );
+
+    setText(
+      ["#authSubtitle", ".auth-subtitle"],
+      normalized === "signup"
+        ? "Join TwistChess and start playing."
+        : "Sign in to continue playing."
+    );
+  }
+
+  function authenticate(form, mode) {
+    const formData = new FormData(form);
+
+    const username = String(
+      formData.get("username") ||
+      formData.get("name") ||
+      ""
+    ).trim();
+
+    const email = String(formData.get("email") || "")
+      .trim()
+      .toLowerCase();
+
+    const password = String(formData.get("password") || "");
+
+    if (mode === "signup" && username.length < 2) {
+      announce("Enter a username with at least 2 characters.");
+      return;
+    }
+
+    if (!email || !email.includes("@")) {
+      announce("Enter a valid email address.");
+      return;
+    }
+
+    if (password.length < 6) {
+      announce("Password must contain at least 6 characters.");
+      return;
+    }
+
+    /*
+      This is a front-end demonstration, not secure authentication.
+      Do not store real passwords in localStorage.
+      Connect a backend or authentication provider for production.
+    */
+
+    appData.account = {
+      email,
+      username: username || email.split("@")[0],
+      createdAt: new Date().toISOString()
+    };
+
+    appData.profile.username = appData.account.username;
+    appData.profile.displayName = appData.account.username;
+
+    saveData();
+    hideAuth();
+    applyPreferences();
+    renderProfile();
+    renderStats();
+    renderFriends();
+    renderGameHistory();
+
+    announce(
+      mode === "signup"
+        ? "Demo account created."
+        : "Signed in to this browser."
+    );
+
+    navigateTo("dashboard");
+  }
+
+  function logout() {
+    appData.account = null;
+    saveData();
+    showAuth("login");
+  }
+
+  /* -------------------- PROFILE -------------------- */
+
+  function renderProfile() {
+    const profile = appData.profile;
+
+    setText(
+      ["#profileName", ".profile-name", "[data-profile='name']"],
+      profile.displayName || profile.username
+    );
+
+    setText(
+      ["#profileUsername", ".profile-username", "[data-profile='username']"],
+      `@${profile.username || "player"}`
+    );
+
+    setText(
+      ["#profileBio", ".profile-bio", "[data-profile='bio']"],
+      profile.bio || ""
+    );
+
+    setText(
+      ["#profileRating", ".profile-rating", "[data-profile='rating']"],
+      String(appData.stats.rating)
+    );
+
+    setText(
+      ["#profileCountry", ".profile-country", "[data-profile='country']"],
+      profile.country || "Not set"
+    );
+
+    allExisting([
+      "#profileAvatar",
+      ".profile-avatar img",
+      "[data-profile-avatar]"
+    ]).forEach((image) => {
+      if (image.tagName === "IMG") {
+        if (profile.avatar) {
+          image.src = profile.avatar;
+          image.alt = profile.displayName || profile.username;
+        } else {
+          image.removeAttribute("src");
+          image.alt = "";
+        }
+      }
+    });
+
+    allExisting([
+      "#profileDisplayName",
+      "input[name='displayName']"
+    ]).forEach((input) => {
+      input.value = profile.displayName || "";
+    });
+
+    allExisting([
+      "#profileUsernameInput",
+      "input[name='profileUsername']"
+    ]).forEach((input) => {
+      input.value = profile.username || "";
+    });
+
+    allExisting([
+      "#profileBioInput",
+      "textarea[name='bio']"
+    ]).forEach((input) => {
+      input.value = profile.bio || "";
+    });
+  }
+
+  function saveProfile(form) {
+    const data = new FormData(form);
+
+    const displayName = String(
+      data.get("displayName") || ""
+    ).trim();
+
+    const username = String(
+      data.get("profileUsername") ||
+      data.get("username") ||
+      appData.profile.username
+    ).trim();
+
+    const bio = String(data.get("bio") || "").trim();
+    const country = String(data.get("country") || "").trim();
+
+    if (username.length < 2) {
+      announce("Username must contain at least 2 characters.");
+      return;
+    }
+
+    appData.profile.displayName = displayName || username;
+    appData.profile.username = username;
+    appData.profile.bio = bio.slice(0, 240);
+    appData.profile.country = country.slice(0, 80);
+
+    if (appData.account) {
+      appData.account.username = username;
+    }
+
+    saveData();
+    renderProfile();
+    updateUserLabels();
+
+    announce("Profile saved.");
+  }
+
+  function updateUserLabels() {
+    const name =
+      appData.profile.displayName ||
+      appData.profile.username ||
+      "Player";
+
+    setText(
+      ["#userName", ".user-name", ".sidebar-user-name", "[data-user-name]"],
+      name
+    );
+
+    setText(
+      ["#userRating", ".user-rating", "[data-user-rating]"],
+      String(appData.stats.rating)
+    );
+
+    setText(
+      ["#userInitials", ".user-initials"],
+      name.slice(0, 1).toUpperCase()
+    );
+  }
+
+  function renderStats() {
+    const stats = appData.stats;
+
+    setText(
+      ["#gamesPlayed", ".games-played", "[data-stat='games']"],
+      String(stats.gamesPlayed)
+    );
+
+    setText(
+      ["#wins", ".wins", "[data-stat='wins']"],
+      String(stats.wins)
+    );
+
+    setText(
+      ["#losses", ".losses", "[data-stat='losses']"],
+      String(stats.losses)
+    );
+
+    setText(
+      ["#draws", ".draws", "[data-stat='draws']"],
+      String(stats.draws)
+    );
+
+    setText(
+      ["#rating", ".rating-value", "[data-stat='rating']"],
+      String(stats.rating)
+    );
+
+    const winRate =
+      stats.gamesPlayed > 0
+        ? Math.round((stats.wins / stats.gamesPlayed) * 100)
+        : 0;
+
+    setText(
+      ["#winRate", ".win-rate", "[data-stat='win-rate']"],
+      `${winRate}%`
+    );
+
+    updateUserLabels();
+  }
+
+  /* -------------------- FRIENDS -------------------- */
+
+  function renderFriends() {
+    const container = firstExisting([
+      "#friendsList",
+      ".friends-list",
+      "[data-friends-list]"
+    ]);
+
+    setText(
+      ["#friendCount", ".friend-count", "[data-friend-count]"],
+      String(appData.friends.length)
+    );
 
     if (!container) return;
 
-    container.replaceChildren();
+    container.innerHTML = "";
 
-    for (const theme of THEMES) {
-      const button = document.createElement("button");
+    if (!appData.friends.length) {
+      const empty = document.createElement("div");
+      empty.className = "empty-state";
+      empty.innerHTML = `
+        <strong>No friends yet</strong>
+        <p>Add a friend to keep track of your chess circle.</p>
+      `;
 
-      button.type = "button";
+      container.appendChild(empty);
+      return;
+    }
 
-      button.className = "theme-choice";
+    appData.friends.forEach((friend) => {
+      const item = document.createElement("article");
 
-      button.title = theme.name;
+      item.className = "friend-card";
+      item.dataset.friendId = friend.id;
 
-      button.setAttribute(
-        "aria-label",
-        theme.name + " board theme"
-      );
+      const avatar = document.createElement("div");
+      avatar.className = "avatar friend-avatar";
 
-      button.setAttribute(
-        "aria-pressed",
-        settings.theme === theme.id
-          ? "true"
-          : "false"
-      );
-
-      button.style.setProperty(
-        "--l",
-        theme.light
-      );
-
-      button.style.setProperty(
-        "--d",
-        theme.dark
-      );
-
-      if (settings.theme === theme.id) {
-        button.classList.add("active");
+      if (friend.avatar) {
+        const image = document.createElement("img");
+        image.src = friend.avatar;
+        image.alt = "";
+        avatar.appendChild(image);
+      } else {
+        avatar.textContent = (friend.name || "?")
+          .slice(0, 1)
+          .toUpperCase();
       }
 
-      button.addEventListener("click", () => {
-        settings.theme = theme.id;
+      const details = document.createElement("div");
+      details.className = "friend-details";
 
-        saveSettings();
+      const name = document.createElement("strong");
+      name.className = "friend-name";
+      name.textContent = friend.name;
 
-        renderThemeChoices();
-        renderBoard();
+      const status = document.createElement("span");
+      status.className = "friend-status";
+      status.textContent = friend.status || "Added locally";
 
-        playSound("select");
+      details.append(name, status);
+
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "button button-secondary friend-remove";
+      remove.dataset.action = "remove-friend";
+      remove.dataset.friendId = friend.id;
+      remove.textContent = "Remove";
+      remove.setAttribute("aria-label", `Remove ${friend.name}`);
+
+      item.append(avatar, details, remove);
+      container.appendChild(item);
+    });
+  }
+
+  function addFriend(name) {
+    const normalizedName = String(name || "").trim();
+
+    if (normalizedName.length < 2) {
+      announce("Enter a friend name with at least 2 characters.");
+      return;
+    }
+
+    const exists = appData.friends.some(
+      (friend) =>
+        friend.name.toLowerCase() === normalizedName.toLowerCase()
+    );
+
+    if (exists) {
+      announce("That friend is already on your list.");
+      return;
+    }
+
+    appData.friends.push({
+      id: randomId(),
+      name: normalizedName,
+      status: "Added locally",
+      avatar: "",
+      addedAt: new Date().toISOString()
+    });
+
+    saveData();
+    renderFriends();
+
+    const input = firstExisting([
+      "#friendName",
+      "input[name='friendName']",
+      ".friend-search-input"
+    ]);
+
+    if (input) input.value = "";
+
+    announce(`${normalizedName} added to your friends.`);
+  }
+
+  function removeFriend(id) {
+    appData.friends = appData.friends.filter(
+      (friend) => friend.id !== id
+    );
+
+    saveData();
+    renderFriends();
+    announce("Friend removed.");
+  }
+
+  /* -------------------- GAME HISTORY -------------------- */
+
+  function renderGameHistory() {
+    const container = firstExisting([
+      "#gameHistory",
+      "#historyList",
+      ".game-history",
+      ".history-list",
+      "[data-game-history]"
+    ]);
+
+    if (!container) return;
+
+    container.innerHTML = "";
+
+    if (!appData.history.length) {
+      const empty = document.createElement("div");
+      empty.className = "empty-state";
+      empty.innerHTML = `
+        <strong>No games recorded</strong>
+        <p>Completed games will appear here.</p>
+      `;
+
+      container.appendChild(empty);
+      return;
+    }
+
+    appData.history.forEach((game) => {
+      const item = document.createElement("article");
+
+      item.className = `history-item result-${game.outcome}`;
+      item.dataset.gameId = game.id;
+
+      const result = document.createElement("span");
+      result.className = "history-result";
+      result.textContent =
+        game.outcome === "win"
+          ? "WIN"
+          : game.outcome === "loss"
+            ? "LOSS"
+            : "DRAW";
+
+      const details = document.createElement("div");
+      details.className = "history-details";
+
+      const title = document.createElement("strong");
+      title.textContent =
+        `${(MODES[game.mode] || MODES.rapid).label} game`;
+
+      const subtitle = document.createElement("span");
+      subtitle.textContent =
+        `${formatDate(game.date)} · ${game.moves || 0} plies`;
+
+      details.append(title, subtitle);
+
+      const score = document.createElement("span");
+      score.className = "history-score";
+      score.textContent = game.result || "*";
+
+      item.append(result, details, score);
+
+      if (game.pgn) {
+        const view = document.createElement("button");
+        view.type = "button";
+        view.className = "button button-secondary";
+        view.dataset.action = "view-pgn";
+        view.dataset.gameId = game.id;
+        view.textContent = "View PGN";
+        item.appendChild(view);
+      }
+
+      container.appendChild(item);
+    });
+  }
+
+  function viewPGN(id) {
+    const game = appData.history.find((item) => item.id === id);
+
+    if (!game || !game.pgn) {
+      announce("No PGN is available for this game.");
+      return;
+    }
+
+    const dialog = firstExisting([
+      "#pgnDialog",
+      ".pgn-dialog",
+      "[data-pgn-dialog]"
+    ]);
+
+    const textarea = firstExisting([
+      "#pgnText",
+      "textarea[name='pgn']",
+      ".pgn-text"
+    ]);
+
+    if (textarea) {
+      textarea.value = game.pgn;
+    }
+
+    if (dialog) {
+      setVisible(dialog, true);
+      dialog.classList.add("is-open");
+    } else {
+      const blob = new Blob([game.pgn], {
+        type: "application/x-chess-pgn"
       });
 
-      container.appendChild(button);
+      downloadBlob(blob, `twistchess-${game.id}.pgn`);
     }
   }
 
-  /* ==========================================================
-     32. SETTINGS BINDING
-     ========================================================== */
+  function downloadBlob(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
 
-  function bindSettings() {
-    const pieceStyle = $("pieceStyle");
-    const orientation = $("orientation");
-    const sound = $("soundToggle");
-    const legal = $("legalToggle");
-    const coords = $("coordsToggle");
-    const animation = $("animationToggle");
-    const pieceSize = $("pieceSize");
+    link.href = url;
+    link.download = filename;
+    link.style.display = "none";
 
-    pieceStyle.value = settings.pieceStyle;
-    orientation.value = settings.orientation;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
 
-    sound.checked = settings.sound;
-    legal.checked = settings.legal;
-    coords.checked = settings.coords;
-    animation.checked = settings.animation;
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
 
-    pieceSize.value = settings.pieceSize;
+  function exportCurrentPGN() {
+    if (!state.chess) return;
 
-    pieceStyle.addEventListener("change", event => {
-      settings.pieceStyle = event.target.value;
+    const pgn = state.chess.pgn();
 
-      saveSettings();
-      renderBoard();
+    if (!pgn) {
+      announce("Make a move before exporting a PGN.");
+      return;
+    }
+
+    const blob = new Blob([pgn], {
+      type: "application/x-chess-pgn"
     });
 
-    orientation.addEventListener("change", event => {
-      settings.orientation = event.target.value;
+    downloadBlob(blob, "twistchess-game.pgn");
+  }
 
-      flipped = settings.orientation === "black";
+  /* -------------------- THEMES AND SETTINGS -------------------- */
 
-      saveSettings();
-      renderBoard();
-    });
+  function applyPreferences() {
+    const preferences = appData.preferences;
+    const theme = THEMES.includes(preferences.theme)
+      ? preferences.theme
+      : CONFIG.defaultTheme;
 
-    sound.addEventListener("change", event => {
-      settings.sound = event.target.checked;
+    document.documentElement.dataset.theme = theme;
+    document.body.dataset.theme = theme;
 
-      saveSettings();
+    document.documentElement.classList.remove(
+      ...THEMES.map((name) => `theme-${name}`)
+    );
 
-      if (settings.sound) {
-        playSound("select");
+    document.body.classList.remove(
+      ...THEMES.map((name) => `theme-${name}`)
+    );
+
+    document.documentElement.classList.add(`theme-${theme}`);
+    document.body.classList.add(`theme-${theme}`);
+
+    document.documentElement.dataset.boardTheme =
+      preferences.boardTheme;
+
+    document.body.dataset.boardTheme =
+      preferences.boardTheme;
+
+    document.documentElement.style.setProperty(
+      "--sound-volume",
+      String(preferences.soundVolume)
+    );
+
+    state.soundEnabled = preferences.soundEnabled !== false;
+    state.soundVolume = clamp(
+      Number(preferences.soundVolume ?? CONFIG.soundVolume),
+      0,
+      1
+    );
+
+    state.boardTheme = preferences.boardTheme || "green";
+
+    allExisting([
+      "input[name='soundEnabled']",
+      "#soundEnabled",
+      "[data-setting='sound']"
+    ]).forEach((input) => {
+      if ("checked" in input) {
+        input.checked = state.soundEnabled;
       }
     });
 
-    legal.addEventListener("change", event => {
-      settings.legal = event.target.checked;
-
-      saveSettings();
-      renderBoard();
+    allExisting([
+      "input[name='coordinates']",
+      "#showCoordinates",
+      "[data-setting='coordinates']"
+    ]).forEach((input) => {
+      if ("checked" in input) {
+        input.checked = preferences.coordinates !== false;
+      }
     });
 
-    coords.addEventListener("change", event => {
-      settings.coords = event.target.checked;
-
-      saveSettings();
-      renderBoard();
+    allExisting([
+      "input[name='showLegalMoves']",
+      "#showLegalMoves",
+      "[data-setting='legal-moves']"
+    ]).forEach((input) => {
+      if ("checked" in input) {
+        input.checked = preferences.showLegalMoves !== false;
+      }
     });
 
-    animation.addEventListener("change", event => {
-      settings.animation = event.target.checked;
-
-      saveSettings();
-      renderBoard();
+    allExisting([
+      "input[name='soundVolume']",
+      "#soundVolume",
+      "[data-setting='volume']"
+    ]).forEach((input) => {
+      input.value = String(state.soundVolume);
     });
 
-    pieceSize.addEventListener("input", event => {
-      settings.pieceSize = Number(event.target.value);
+    renderBoard();
+  }
 
-      saveSettings();
-      renderBoard();
+  function setTheme(theme) {
+    if (!THEMES.includes(theme)) {
+      announce("That theme is not available.");
+      return;
+    }
+
+    appData.preferences.theme = theme;
+    saveData();
+    applyPreferences();
+    renderSettings();
+
+    announce(`${theme.charAt(0).toUpperCase() + theme.slice(1)} theme applied.`);
+  }
+
+  function setBoardTheme(theme) {
+    const supported = [
+      "green",
+      "classic",
+      "blue",
+      "wood",
+      "purple",
+      "marble"
+    ];
+
+    if (!supported.includes(theme)) {
+      announce("That board theme is not available.");
+      return;
+    }
+
+    appData.preferences.boardTheme = theme;
+    state.boardTheme = theme;
+
+    saveData();
+    applyPreferences();
+    renderSettings();
+  }
+
+  function renderSettings() {
+    const preferences = appData.preferences;
+
+    allExisting([
+      "#themeSelect",
+      "select[name='theme']"
+    ]).forEach((select) => {
+      select.value = preferences.theme;
     });
 
-    $("resetSettings").addEventListener("click", () => {
-      settings = { ...DEFAULT_SETTINGS };
+    allExisting([
+      "#boardThemeSelect",
+      "select[name='boardTheme']"
+    ]).forEach((select) => {
+      select.value = preferences.boardTheme;
+    });
 
-      saveSettings();
+    allExisting([
+      "#soundEnabled",
+      "input[name='soundEnabled']"
+    ]).forEach((input) => {
+      input.checked = preferences.soundEnabled !== false;
+    });
 
-      flipped = false;
+    allExisting([
+      "#showCoordinates",
+      "input[name='coordinates']"
+    ]).forEach((input) => {
+      input.checked = preferences.coordinates !== false;
+    });
 
-      pieceStyle.value = settings.pieceStyle;
-      orientation.value = settings.orientation;
+    allExisting([
+      "#showLegalMoves",
+      "input[name='showLegalMoves']"
+    ]).forEach((input) => {
+      input.checked = preferences.showLegalMoves !== false;
+    });
 
-      sound.checked = settings.sound;
-      legal.checked = settings.legal;
-      coords.checked = settings.coords;
-      animation.checked = settings.animation;
-
-      pieceSize.value = settings.pieceSize;
-
-      renderThemeChoices();
-      renderBoard();
-
-      showToast(
-        "Settings reset to defaults.",
-        "success"
-      );
+    allExisting([
+      "#soundVolume",
+      "input[name='soundVolume']"
+    ]).forEach((input) => {
+      input.value = String(preferences.soundVolume);
     });
   }
 
-  /* ==========================================================
-     33. KEYBOARD SHORTCUTS
-     ========================================================== */
+  function updatePreference(key, value) {
+    if (!(key in appData.preferences)) return;
 
-  function bindKeyboard() {
-    document.addEventListener("keydown", event => {
-      const target = event.target;
+    appData.preferences[key] = value;
+    saveData();
+    applyPreferences();
+  }
 
-      if (
-        target instanceof HTMLElement &&
-        (
-          target.tagName === "INPUT" ||
-          target.tagName === "SELECT" ||
-          target.tagName === "TEXTAREA"
-        )
-      ) {
+  function resetSettings() {
+    if (!window.confirm("Reset all preferences to their defaults?")) {
+      return;
+    }
+
+    appData.preferences = structuredCloneSafe(
+      defaultData.preferences
+    );
+
+    saveData();
+    applyPreferences();
+    renderSettings();
+
+    announce("Settings restored to defaults.");
+  }
+
+  /* -------------------- SOUND EFFECTS -------------------- */
+
+  function playSound(type = "move") {
+    if (!state.soundEnabled || state.soundVolume <= 0) return;
+
+    try {
+      const AudioContextClass =
+        window.AudioContext || window.webkitAudioContext;
+
+      if (!AudioContextClass) return;
+
+      if (!state.moveSoundContext) {
+        state.moveSoundContext = new AudioContextClass();
+      }
+
+      const context = state.moveSoundContext;
+
+      if (context.state === "suspended") {
+        context.resume().catch(() => {});
+      }
+
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+
+      const frequencies = {
+        move: 420,
+        capture: 270,
+        check: 520,
+        notification: 640,
+        error: 180
+      };
+
+      oscillator.type = "sine";
+      oscillator.frequency.value = frequencies[type] || 420;
+
+      gain.gain.setValueAtTime(
+        Math.max(0.001, state.soundVolume * 0.12),
+        context.currentTime
+      );
+
+      gain.gain.exponentialRampToValueAtTime(
+        0.001,
+        context.currentTime + 0.09
+      );
+
+      oscillator.connect(gain);
+      gain.connect(context.destination);
+
+      oscillator.start(context.currentTime);
+      oscillator.stop(context.currentTime + 0.1);
+    } catch (error) {
+      console.debug("TwistChess: Sound unavailable.", error);
+    }
+  }
+
+  /* -------------------- SEARCH -------------------- */
+
+  function searchContent(query) {
+    const term = String(query || "").trim().toLowerCase();
+
+    const searchable = allExisting([
+      ".mode-card",
+      ".friend-card",
+      ".history-item",
+      ".searchable",
+      "[data-searchable]"
+    ]);
+
+    searchable.forEach((item) => {
+      const text = item.textContent.toLowerCase();
+
+      item.hidden = Boolean(term) && !text.includes(term);
+    });
+  }
+
+  /* -------------------- MODALS -------------------- */
+
+  function closeModal(modal) {
+    if (!modal) return;
+
+    modal.classList.remove("is-open", "active");
+    setVisible(modal, false);
+  }
+
+  function closeAllModals() {
+    allExisting([
+      ".modal",
+      ".dialog",
+      ".promotion-dialog",
+      ".game-over-dialog",
+      ".pgn-dialog",
+      "[role='dialog']"
+    ]).forEach(closeModal);
+  }
+
+  function openModal(modal) {
+    if (!modal) return;
+
+    setVisible(modal, true);
+    modal.classList.add("is-open", "active");
+  }
+
+  /* -------------------- EVENT DELEGATION -------------------- */
+
+  function onBoardClick(event) {
+    const square = event.target.closest("[data-square]");
+    if (!square) return;
+
+    const board = getBoardElement();
+
+    if (!board || !board.contains(square)) return;
+
+    selectSquare(square.dataset.square);
+  }
+
+  function onBoardKeydown(event) {
+    if (event.key !== "Enter" && event.key !== " ") return;
+
+    const square = event.target.closest("[data-square]");
+    if (!square) return;
+
+    event.preventDefault();
+    selectSquare(square.dataset.square);
+  }
+
+  function onDragStart(event) {
+    const pieceElement = event.target.closest(".piece[data-square]");
+
+    if (!pieceElement || state.gameOver || !state.chess) {
+      event.preventDefault();
+      return;
+    }
+
+    const square = pieceElement.dataset.square;
+    const piece = getPieceAt(square);
+
+    if (!isPlayersPiece(piece)) {
+      event.preventDefault();
+      return;
+    }
+
+    state.draggedFrom = square;
+    state.selectedSquare = square;
+    state.legalTargets = getLegalMoves(square).map(
+      (move) => move.to
+    );
+
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("text/plain", square);
+    }
+
+    renderBoard();
+  }
+
+  function onDragOver(event) {
+    const square = event.target.closest("[data-square]");
+
+    if (
+      square &&
+      state.legalTargets.includes(square.dataset.square)
+    ) {
+      event.preventDefault();
+
+      if (event.dataTransfer) {
+        event.dataTransfer.dropEffect = "move";
+      }
+    }
+  }
+
+  function onDrop(event) {
+    const square = event.target.closest("[data-square]");
+    if (!square) return;
+
+    event.preventDefault();
+
+    const from =
+      state.draggedFrom ||
+      (event.dataTransfer &&
+        event.dataTransfer.getData("text/plain"));
+
+    const to = square.dataset.square;
+
+    state.draggedFrom = null;
+
+    if (from && to) {
+      attemptMove(from, to);
+    }
+  }
+
+  function handleClickAction(actionElement) {
+    const action =
+      actionElement.dataset.action ||
+      actionElement.dataset.nav ||
+      actionElement.dataset.pageTarget;
+
+    const target =
+      actionElement.dataset.target ||
+      actionElement.dataset.page ||
+      actionElement.dataset.nav ||
+      actionElement.dataset.pageTarget;
+
+    switch (action) {
+      case "navigate":
+        navigateTo(target);
+        break;
+
+      case "dashboard":
+      case "home":
+      case "game":
+      case "profile":
+      case "friends":
+      case "history":
+      case "settings":
+      case "leaderboard":
+      case "stats":
+        navigateTo(action);
+        break;
+
+      case "new-game":
+      case "play":
+        startNewGame(
+          actionElement.dataset.mode || state.currentMode
+        );
+        break;
+
+      case "undo":
+        undoMove();
+        break;
+
+      case "resign":
+        resignGame();
+        break;
+
+      case "flip-board":
+        flipBoard();
+        break;
+
+      case "toggle-sidebar":
+        toggleSidebar();
+        break;
+
+      case "login":
+        showAuth("login");
+        break;
+
+      case "signup":
+        showAuth("signup");
+        break;
+
+      case "logout":
+        logout();
+        break;
+
+      case "close-modal":
+        closeModal(actionElement.closest(
+          ".modal, .dialog, [role='dialog']"
+        ));
+        break;
+
+      case "close-all-modals":
+        closeAllModals();
+        break;
+
+      case "add-friend": {
+        const input = firstExisting([
+          "#friendName",
+          "input[name='friendName']",
+          ".friend-search-input"
+        ]);
+
+        addFriend(input?.value);
+        break;
+      }
+
+      case "remove-friend":
+        removeFriend(actionElement.dataset.friendId);
+        break;
+
+      case "theme":
+        setTheme(actionElement.dataset.theme);
+        break;
+
+      case "board-theme":
+        setBoardTheme(actionElement.dataset.boardTheme);
+        break;
+
+      case "reset-settings":
+        resetSettings();
+        break;
+
+      case "export-pgn":
+        exportCurrentPGN();
+        break;
+
+      case "view-pgn":
+        viewPGN(actionElement.dataset.gameId);
+        break;
+
+      case "new-game-confirm":
+        startNewGame(state.currentMode);
+        break;
+
+      case "retry-chess":
+        loadChessLibrary();
+        break;
+
+      case "promotion":
+        choosePromotion(actionElement.dataset.piece || "q");
+        break;
+
+      case "show-login":
+        switchAuthMode("login");
+        break;
+
+      case "show-signup":
+        switchAuthMode("signup");
+        break;
+
+      default:
+        break;
+    }
+  }
+
+  function handleChange(event) {
+    const element = event.target;
+
+    if (
+      element.matches("[data-theme-select], #themeSelect, select[name='theme']")
+    ) {
+      setTheme(element.value);
+      return;
+    }
+
+    if (
+      element.matches(
+        "[data-board-theme-select], #boardThemeSelect, select[name='boardTheme']"
+      )
+    ) {
+      setBoardTheme(element.value);
+      return;
+    }
+
+    if (
+      element.matches(
+        "#soundEnabled, input[name='soundEnabled'], [data-setting='sound']"
+      )
+    ) {
+      updatePreference("soundEnabled", element.checked);
+      return;
+    }
+
+    if (
+      element.matches(
+        "#showCoordinates, input[name='coordinates'], [data-setting='coordinates']"
+      )
+    ) {
+      updatePreference("coordinates", element.checked);
+      return;
+    }
+
+    if (
+      element.matches(
+        "#showLegalMoves, input[name='showLegalMoves'], [data-setting='legal-moves']"
+      )
+    ) {
+      updatePreference("showLegalMoves", element.checked);
+      return;
+    }
+
+    if (
+      element.matches(
+        "#soundVolume, input[name='soundVolume'], [data-setting='volume']"
+      )
+    ) {
+      const volume = clamp(Number(element.value), 0, 1);
+
+      state.soundVolume = volume;
+      appData.preferences.soundVolume = volume;
+
+      saveData();
+      return;
+    }
+
+    if (element.matches("[data-mode-select], #gameMode")) {
+      state.currentMode = MODES[element.value]
+        ? element.value
+        : CONFIG.defaultMode;
+
+      initializeTimers();
+      updateTimerDisplay();
+      return;
+    }
+
+    if (element.matches("[data-search], #globalSearch, .global-search")) {
+      searchContent(element.value);
+    }
+  }
+
+  function handleSubmit(event) {
+    const form = event.target;
+
+    if (!(form instanceof HTMLFormElement)) return;
+
+    if (
+      form.matches(
+        "#loginForm, .login-form, [data-auth-form='login']"
+      )
+    ) {
+      event.preventDefault();
+      authenticate(form, "login");
+      return;
+    }
+
+    if (
+      form.matches(
+        "#signupForm, .signup-form, [data-auth-form='signup']"
+      )
+    ) {
+      event.preventDefault();
+      authenticate(form, "signup");
+      return;
+    }
+
+    if (
+      form.matches(
+        "#profileForm, .profile-form, [data-form='profile']"
+      )
+    ) {
+      event.preventDefault();
+      saveProfile(form);
+      return;
+    }
+
+    if (
+      form.matches(
+        "#addFriendForm, .add-friend-form, [data-form='add-friend']"
+      )
+    ) {
+      event.preventDefault();
+
+      const data = new FormData(form);
+      addFriend(data.get("friendName") || data.get("name"));
+    }
+  }
+
+  /* -------------------- KEYBOARD SHORTCUTS -------------------- */
+
+  function handleKeyboard(event) {
+    const target = event.target;
+
+    if (
+      target instanceof HTMLInputElement ||
+      target instanceof HTMLTextAreaElement ||
+      target instanceof HTMLSelectElement ||
+      target?.isContentEditable
+    ) {
+      if (event.key === "Escape") {
+        closeAllModals();
+      }
+
+      return;
+    }
+
+    if (event.key === "Escape") {
+      closeAllModals();
+      clearSelection();
+      return;
+    }
+
+    if (event.key.toLowerCase() === "f" && !event.ctrlKey && !event.metaKey) {
+      flipBoard();
+      return;
+    }
+
+    if (
+      event.key.toLowerCase() === "n" &&
+      !event.ctrlKey &&
+      !event.metaKey
+    ) {
+      startNewGame(state.currentMode);
+    }
+  }
+
+  /* -------------------- MODE CARDS -------------------- */
+
+  function initializeModeCards() {
+    allExisting([
+      ".mode-card",
+      "[data-mode]",
+      "[data-game-mode]"
+    ]).forEach((card) => {
+      const mode =
+        card.dataset.mode ||
+        card.dataset.gameMode;
+
+      if (!MODES[mode]) return;
+
+      card.setAttribute("role", "button");
+      card.setAttribute("tabindex", "0");
+
+      if (!card.dataset.action) {
+        card.dataset.action = "new-game";
+      }
+
+      card.dataset.mode = mode;
+    });
+  }
+
+  /* -------------------- INITIALIZATION -------------------- */
+
+  function initializeEventListeners() {
+    document.addEventListener("click", (event) => {
+      const actionElement = event.target.closest(
+        "[data-action], [data-nav], [data-page-target], [data-auth-mode], .nav-item, .sidebar-link, .mode-card"
+      );
+
+      if (!actionElement) return;
+
+      if (actionElement.dataset.authMode) {
+        switchAuthMode(actionElement.dataset.authMode);
         return;
       }
 
       if (
-        event.key === "Escape" &&
-        selected
+        actionElement.classList.contains("nav-item") ||
+        actionElement.classList.contains("sidebar-link")
       ) {
-        selected = null;
-        legalTargets = [];
+        const target =
+          actionElement.dataset.nav ||
+          actionElement.dataset.pageTarget ||
+          actionElement.getAttribute("href")?.replace("#", "");
 
-        renderBoard();
+        if (target) {
+          event.preventDefault();
+          navigateTo(target);
+        }
+
+        return;
       }
 
       if (
-        event.ctrlKey &&
-        event.key.toLowerCase() === "z"
+        actionElement.classList.contains("mode-card") &&
+        !actionElement.dataset.action
       ) {
-        event.preventDefault();
+        startNewGame(
+          actionElement.dataset.mode ||
+          actionElement.dataset.gameMode ||
+          CONFIG.defaultMode
+        );
 
-        undoMove();
+        return;
+      }
+
+      if (actionElement.dataset.action) {
+        event.preventDefault();
+        handleClickAction(actionElement);
+      }
+    });
+
+    document.addEventListener("submit", handleSubmit);
+    document.addEventListener("change", handleChange);
+    document.addEventListener("keydown", handleKeyboard);
+
+    document.addEventListener("click", onBoardClick);
+    document.addEventListener("keydown", onBoardKeydown);
+    document.addEventListener("dragstart", onDragStart);
+    document.addEventListener("dragover", onDragOver);
+    document.addEventListener("drop", onDrop);
+
+    document.addEventListener("click", (event) => {
+      const backdrop = event.target.closest(
+        ".modal, .dialog, [role='dialog']"
+      );
+
+      if (
+        backdrop &&
+        event.target === backdrop &&
+        backdrop.dataset.closeOnBackdrop !== "false"
+      ) {
+        closeModal(backdrop);
+      }
+    });
+
+    document.addEventListener("input", (event) => {
+      const input = event.target;
+
+      if (
+        input.matches(
+          "[data-search], #globalSearch, .global-search"
+        )
+      ) {
+        searchContent(input.value);
       }
     });
   }
 
-  /* ==========================================================
-     34. BUTTON EVENTS
-     ========================================================== */
+  function initializeUI() {
+    applyPreferences();
+    updateUserLabels();
+    renderStats();
+    renderProfile();
+    renderFriends();
+    renderGameHistory();
+    renderSettings();
+    initializeModeCards();
 
-  function bindButtons() {
-    $("newGame").addEventListener("click", () => {
-      newGame(currentMode);
-    });
+    const savedPage = document.body.dataset.startPage;
 
-    $("undoBtn").addEventListener("click", () => {
-      undoMove();
-    });
+    if (!appData.account) {
+      const authScreen = firstExisting([
+        "#authScreen",
+        ".auth-screen",
+        "[data-screen='auth']"
+      ]);
 
-    $("flipBtn").addEventListener("click", () => {
-      flipped = !flipped;
+      if (authScreen) {
+        showAuth("login");
+      } else {
+        navigateTo(savedPage || "dashboard");
+      }
+    } else {
+      hideAuth();
+      navigateTo(savedPage || "dashboard");
+    }
 
-      renderBoard();
+    const currentModeElement = firstExisting([
+      "#gameMode",
+      "select[name='gameMode']",
+      "[data-mode-select]"
+    ]);
 
-      playSound("select");
-    });
+    if (currentModeElement && MODES[currentModeElement.value]) {
+      state.currentMode = currentModeElement.value;
+    }
 
-    document.querySelectorAll(".nav").forEach(button => {
-      button.addEventListener("click", () => {
-        showView(button.dataset.view);
-
-        playSound("select");
-      });
-    });
+    updateTimerDisplay();
   }
 
-  /* ==========================================================
-     35. INITIALIZATION
-     ========================================================== */
+  function init() {
+    if (document.documentElement.dataset.twistChessInitialized) {
+      return;
+    }
 
-  function initialize() {
-    renderModeCards();
-    renderThemeChoices();
+    document.documentElement.dataset.twistChessInitialized = "true";
 
-    bindSettings();
-    bindButtons();
-    bindKeyboard();
+    initializeEventListeners();
+    initializeUI();
 
-    newGame("classic");
+    loadChessLibrary().then((loaded) => {
+      if (loaded) {
+        renderBoard();
+        updateGameStatus();
+      }
+    });
 
-    console.info(
-      "TwistChess initialized successfully."
+    document.dispatchEvent(
+      new CustomEvent("twistchess:ready", {
+        detail: {
+          version: CONFIG.version
+        }
+      })
     );
 
-    console.info(
-      `${MODES.length} game modes registered.`
-    );
+    console.info(`TwistChess ${CONFIG.version} initialized.`);
   }
+
+  /* -------------------- PUBLIC API -------------------- */
+
+  window.TwistChess = {
+    version: CONFIG.version,
+
+    navigate: navigateTo,
+    newGame: startNewGame,
+    undoMove,
+    resign: resignGame,
+    flipBoard,
+    setTheme,
+    setBoardTheme,
+    addFriend,
+    removeFriend,
+    exportPGN: exportCurrentPGN,
+    getState: () => ({
+      screen: state.currentScreen,
+      mode: state.currentMode,
+      gameStarted: state.gameStarted,
+      gameOver: state.gameOver,
+      boardFlipped: state.boardFlipped,
+      fen: state.chess ? state.chess.fen() : null,
+      history: state.chess ? state.chess.history() : [],
+      stats: structuredCloneSafe(appData.stats),
+      preferences: structuredCloneSafe(appData.preferences)
+    })
+  };
+
+  /* -------------------- START -------------------- */
 
   if (document.readyState === "loading") {
-    document.addEventListener(
-      "DOMContentLoaded",
-      initialize,
-      { once: true }
-    );
+    document.addEventListener("DOMContentLoaded", init, { once: true });
   } else {
-    initialize();
+    init();
   }
-
 })();
